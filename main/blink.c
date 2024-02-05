@@ -15,16 +15,18 @@
 #include "driver/gpio.h"
 #include "sdkconfig.h"
 #include "esp_log.h"
+#include <time.h>
+#include <sys/time.h>
 
 /* Can use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
 */
 #define BLINK_GPIO CONFIG_BLINK_GPIO
-static const char *TAG = "LAZARUS";
 
 static TimerHandle_t ticker_timer;
 static int led_status;
 static int counter;
+static char strtime_buf[64];
 
 static void ticker_1000ms(TimerHandle_t xTimer){
     switch (led_status){
@@ -43,6 +45,20 @@ static void ticker_1000ms(TimerHandle_t xTimer){
 
 }
 
+static void print_time(TimerHandle_t xTimer){
+    time_t now = 0;
+    time(&now);
+    static struct tm timeinfo = { 0 };
+    localtime_r(&now, &timeinfo);
+    strftime(strtime_buf, sizeof(strtime_buf), "%c", &timeinfo);
+    printf("%s\n", strtime_buf);
+}
+
+void set_timezone(){
+    setenv("TZ", "CST", 1);
+    tzset();
+}
+
 void app_main(void)
 {
     /* Configure the IOMUX register for pad BLINK_GPIO (some pads are
@@ -51,12 +67,13 @@ void app_main(void)
        Technical Reference for a list of pads and their default
        functions.)
     */
+    set_timezone();
     gpio_pad_select_gpio(BLINK_GPIO);
     /* Set the GPIO as a push/pull output */
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
     gpio_set_level(BLINK_GPIO, 1);
     led_status = 1;
-    ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, ticker_1000ms);
+    ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time);
     xTimerStart(ticker_timer, portMAX_DELAY);
     vTaskDelay(pdMS_TO_TICKS(30000));
     for(;;);

@@ -15,8 +15,14 @@
 #include "driver/gpio.h"
 #include "sdkconfig.h"
 #include "esp_log.h"
+#include "esp_err.h"
 #include <time.h>
 #include <sys/time.h>
+#include "nvs_flash.h"
+#include "esp_system.h"
+#include "esp_event.h"
+#include "protocol_examples_common.h"
+/* #include "nvs_flash.h" */
 
 /* Can use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
@@ -59,6 +65,19 @@ void set_timezone(){
     tzset();
 }
 
+void sntp_get(){
+    ESP_ERROR_CHECK( nvs_flash_init() );
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK( esp_event_loop_create_default() );
+
+    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
+     * Read "Establishing Wi-Fi or Ethernet Connection" section in
+     * examples/protocols/README.md for more information about this function.
+     */
+    ESP_ERROR_CHECK(example_connect());
+}
+
+
 void app_main(void)
 {
     /* Configure the IOMUX register for pad BLINK_GPIO (some pads are
@@ -69,6 +88,7 @@ void app_main(void)
     */
     set_timezone();
     gpio_pad_select_gpio(BLINK_GPIO);
+    sntp_get();
     /* Set the GPIO as a push/pull output */
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
     gpio_set_level(BLINK_GPIO, 1);

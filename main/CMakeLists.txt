@@ -1,3 +1,3 @@
-idf_component_register(SRCS "blink.c"
+idf_component_register(SRCS "lazarus.c"
                     INCLUDE_DIRS "."
                     )

@@ -60,6 +60,11 @@ static void print_time(TimerHandle_t xTimer){
     printf("%s\n", strtime_buf);
 }
 
+void setup_gpio(){
+    gpio_pad_select_gpio(BLINK_GPIO);
+    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+}
+
 void set_timezone(){
     setenv("TZ", "CST-6", 1);
     tzset();
@@ -73,7 +78,9 @@ void time_sync_notification_cb(struct timeval *tv)
 static void initialize_sntp(void)
 {
     ESP_LOGI(__FUNCTION__, "Initializing SNTP");
+    wifi_init_sta();
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_set_sync_mode(SNTP_SYNC_MODE_IMMED);
     sntp_setservername(0, "pool.ntp.org");
     sntp_set_time_sync_notification_cb(time_sync_notification_cb);
     sntp_init();
@@ -88,12 +95,10 @@ void app_main(void)
        functions.)
     */
     set_timezone();
-    gpio_pad_select_gpio(BLINK_GPIO);
+    setup_gpio();
     ESP_ERROR_CHECK(nvs_flash_init()); 
-    wifi_init_sta();
     initialize_sntp();
     /* Set the GPIO as a push/pull output */
-    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
     gpio_set_level(BLINK_GPIO, 1);
     led_status = 1;
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time);

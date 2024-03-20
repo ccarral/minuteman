@@ -22,6 +22,13 @@
 #include "esp_event.h"
 #include "wifi.h"
 #include "esp_sntp.h"
+#include <max7219.h>
+
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4, 0, 0)
+#define HOST    HSPI_HOST
+#else
+#define HOST    SPI2_HOST
+#endif
 /* #include "protocol_examples_common.h" */
 /* #include "nvs_flash.h" */
 
@@ -33,23 +40,8 @@
 static TimerHandle_t ticker_timer;
 static int led_status;
 static char strtime_buf[64];
-
-static void ticker_1000ms(TimerHandle_t xTimer){
-    switch (led_status){
-        case 0:
-            gpio_set_level(BLINK_GPIO, 1);
-            led_status = 1;
-            printf("Turning on the LED\n");
-            break;
-        case 1:
-        default:
-            gpio_set_level(BLINK_GPIO, 0);
-            led_status = 0;
-            printf("Turning off the LED\n");
-            break;
-    }
-
-}
+static char display_buf[10]; // 8 digits + decimal point + \0
+static max7219_t dev;
 
 static void print_time(TimerHandle_t xTimer){
     time_t now = 0;
@@ -57,7 +49,10 @@ static void print_time(TimerHandle_t xTimer){
     static struct tm timeinfo = { 0 };
     localtime_r(&now, &timeinfo);
     strftime(strtime_buf, sizeof(strtime_buf), "%c", &timeinfo);
+    strftime(display_buf, sizeof(display_buf), "00%I%M%S", &timeinfo);
     printf("%s\n", strtime_buf);
+    max7219_clear(&dev);
+    max7219_draw_text_7seg(&dev, 0, display_buf);
 }
 
 void setup_gpio(){
@@ -65,8 +60,30 @@ void setup_gpio(){
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
 }
 
+void setup_display(max7219_t *dev){
+    spi_bus_config_t cfg = {
+       .mosi_io_num = 19 ,
+       .miso_io_num = -1,
+       .sclk_io_num = 18 ,
+       .quadwp_io_num = -1,
+       .quadhd_io_num = -1,
+       .max_transfer_sz = 0,
+       .flags = 0
+    };
+
+    ESP_ERROR_CHECK(spi_bus_initialize(HOST, &cfg, 1));
+
+    // Configure device
+    dev->cascade_size = 1;
+    dev->digits = 8;
+    dev->mirrored = true;
+
+    ESP_ERROR_CHECK(max7219_init_desc(dev, HOST, MAX7219_MAX_CLOCK_SPEED_HZ, 5));
+    ESP_ERROR_CHECK(max7219_init(dev));
+}
+
 void set_timezone(){
-    setenv("TZ", "CST-6", 1);
+    setenv("TZ", "UTC-6", 1);
     tzset();
 }
 
@@ -100,6 +117,7 @@ void app_main(void)
     initialize_sntp();
     /* Set the GPIO as a push/pull output */
     gpio_set_level(BLINK_GPIO, 1);
+    setup_display(&dev);
     led_status = 1;
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time);
     xTimerStart(ticker_timer, portMAX_DELAY);

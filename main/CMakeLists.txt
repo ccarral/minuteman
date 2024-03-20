@@ -1,3 +1,3 @@
-idf_component_register(SRCS "lazarus.c"
+idf_component_register(SRCS "minuteman.c"
                     INCLUDE_DIRS "."
                     )

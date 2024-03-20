@@ -122,10 +122,13 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
-# Example Configuration
+# Minuteman Config
 #
 CONFIG_BLINK_GPIO=23
-# end of Example Configuration
+CONFIG_PIN_NUM_MOSI=19
+CONFIG_PIN_NUM_CLK=18
+CONFIG_PIN_NUM_CS=5
+# end of Minuteman Config
 
 #
 # WiFi Configuration

@@ -1,4 +1,4 @@
-menu "Example Configuration"
+menu "Minuteman Config"
 
     config BLINK_GPIO
         int "Blink GPIO number"
@@ -10,4 +10,26 @@ menu "Example Configuration"
             Some GPIOs are used for other purposes (flash connections, etc.) and cannot be used to blink.
 
             GPIOs 35-39 are input-only so cannot be used as outputs.
+
+    config PIN_NUM_MOSI
+        int "GPIO number of MOSI"
+        default 13 if IDF_TARGET_ESP8266
+        default 19 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3
+        help
+            GPIO number of MOSI
+
+    config PIN_NUM_CLK
+        int "GPIO number of CLK"
+        default 14 if IDF_TARGET_ESP8266
+        default 18 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3
+        help
+            GPIO number of CLK
+
+    config PIN_NUM_CS
+        int "GPIO number of CS"
+        default 15 if IDF_TARGET_ESP8266
+        default 5 if IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32S3 || IDF_TARGET_ESP32C3
+        help
+            GPIO number of CS
+
 endmenu

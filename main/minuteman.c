@@ -36,6 +36,9 @@
    or you can edit the following line and set a number here.
 */
 #define BLINK_GPIO CONFIG_BLINK_GPIO
+#define PIN_NUM_MOSI CONFIG_PIN_NUM_MOSI
+#define PIN_NUM_CLK CONFIG_PIN_NUM_CLK
+#define PIN_NUM_CS CONFIG_PIN_NUM_CS
 
 static TimerHandle_t ticker_timer;
 static int led_status;
@@ -62,9 +65,9 @@ void setup_gpio(){
 
 void setup_display(max7219_t *dev){
     spi_bus_config_t cfg = {
-       .mosi_io_num = 19 ,
+       .mosi_io_num = PIN_NUM_MOSI,
        .miso_io_num = -1,
-       .sclk_io_num = 18 ,
+       .sclk_io_num = PIN_NUM_CLK,
        .quadwp_io_num = -1,
        .quadhd_io_num = -1,
        .max_transfer_sz = 0,
@@ -78,7 +81,7 @@ void setup_display(max7219_t *dev){
     dev->digits = 8;
     dev->mirrored = true;
 
-    ESP_ERROR_CHECK(max7219_init_desc(dev, HOST, MAX7219_MAX_CLOCK_SPEED_HZ, 5));
+    ESP_ERROR_CHECK(max7219_init_desc(dev, HOST, MAX7219_MAX_CLOCK_SPEED_HZ, PIN_NUM_CS));
     ESP_ERROR_CHECK(max7219_init(dev));
 }
 

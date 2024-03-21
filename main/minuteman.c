@@ -118,8 +118,6 @@ void app_main(void)
     setup_gpio();
     ESP_ERROR_CHECK(nvs_flash_init()); 
     initialize_sntp();
-    /* Set the GPIO as a push/pull output */
-    gpio_set_level(BLINK_GPIO, 1);
     setup_display(&dev);
     led_status = 1;
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time);

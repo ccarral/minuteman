@@ -40,11 +40,24 @@
 #define PIN_NUM_CLK CONFIG_PIN_NUM_CLK
 #define PIN_NUM_CS CONFIG_PIN_NUM_CS
 
+typedef struct {
+    char digits[9];
+    int edit_mode;
+    max7219_t* display;
+} minuteman_t;
+
 static TimerHandle_t ticker_timer;
 static int led_status;
 static char strtime_buf[64];
 static char display_buf[10]; // 8 digits + decimal point + \0
-static max7219_t dev;
+static max7219_t display;
+static minuteman_t device;
+StaticSemaphore_t semaphore;
+
+void draw_display(minuteman_t* dev){
+    max7219_clear(dev->display);
+    max7219_draw_text_7seg(dev->display, 0, dev->digits);
+}
 
 static void print_time(TimerHandle_t xTimer){
     time_t now = 0;
@@ -52,10 +65,9 @@ static void print_time(TimerHandle_t xTimer){
     static struct tm timeinfo = { 0 };
     localtime_r(&now, &timeinfo);
     strftime(strtime_buf, sizeof(strtime_buf), "%c", &timeinfo);
-    strftime(display_buf, sizeof(display_buf), "00%I%M%S", &timeinfo);
+    strftime(device.digits, sizeof(device.digits), "00%I%M%S", &timeinfo);
     printf("%s\n", strtime_buf);
-    max7219_clear(&dev);
-    max7219_draw_text_7seg(&dev, 0, display_buf);
+    draw_display(&device);
 }
 
 void setup_gpio(){
@@ -63,7 +75,7 @@ void setup_gpio(){
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
 }
 
-void setup_display(max7219_t *dev){
+void display_init(max7219_t *display){
     spi_bus_config_t cfg = {
        .mosi_io_num = PIN_NUM_MOSI,
        .miso_io_num = -1,
@@ -77,12 +89,19 @@ void setup_display(max7219_t *dev){
     ESP_ERROR_CHECK(spi_bus_initialize(HOST, &cfg, 1));
 
     // Configure device
-    dev->cascade_size = 1;
-    dev->digits = 8;
-    dev->mirrored = true;
+    display->cascade_size = 1;
+    display->digits = 8;
+    display->mirrored = true;
 
-    ESP_ERROR_CHECK(max7219_init_desc(dev, HOST, MAX7219_MAX_CLOCK_SPEED_HZ, PIN_NUM_CS));
-    ESP_ERROR_CHECK(max7219_init(dev));
+    ESP_ERROR_CHECK(max7219_init_desc(display, HOST, MAX7219_MAX_CLOCK_SPEED_HZ, PIN_NUM_CS));
+    ESP_ERROR_CHECK(max7219_init(display));
+}
+
+void minuteman_init(minuteman_t* dev, max7219_t* display){
+    /* TODO: Create semaphore for device */
+    dev->display = display;
+    dev->edit_mode = 0;
+    sprintf(dev->digits, "00000000");
 }
 
 void set_timezone(){
@@ -118,7 +137,8 @@ void app_main(void)
     setup_gpio();
     ESP_ERROR_CHECK(nvs_flash_init()); 
     initialize_sntp();
-    setup_display(&dev);
+    display_init(&display);
+    minuteman_init(&device, &display);
     led_status = 1;
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time);
     xTimerStart(ticker_timer, portMAX_DELAY);

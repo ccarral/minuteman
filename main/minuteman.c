@@ -23,14 +23,24 @@
 #include "wifi.h"
 #include "esp_sntp.h"
 #include <max7219.h>
+#include <encoder.h>
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4, 0, 0)
 #define HOST    HSPI_HOST
 #else
 #define HOST    SPI2_HOST
 #endif
-/* #include "protocol_examples_common.h" */
-/* #include "nvs_flash.h" */
+
+#define RE_A_GPIO   34
+#define RE_B_GPIO   35
+#define RE_BTN_GPIO 32 
+
+#define EV_QUEUE_LEN 5
+
+static const char *TAG = "encoder_example";
+
+static QueueHandle_t event_queue;
+static rotary_encoder_t encoder;
 
 /* Can use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
@@ -65,9 +75,9 @@ static void print_time(TimerHandle_t xTimer){
     static struct tm timeinfo = { 0 };
     localtime_r(&now, &timeinfo);
     strftime(strtime_buf, sizeof(strtime_buf), "%c", &timeinfo);
-    strftime(device.digits, sizeof(device.digits), "00%I%M%S", &timeinfo);
-    printf("%s\n", strtime_buf);
-    draw_display(&device);
+    /* strftime(device.digits, sizeof(device.digits), "00%I%M%S", &timeinfo); */
+    /* printf("%s\n", strtime_buf); */
+    /* draw_display(&device); */
 }
 
 void setup_gpio(){
@@ -125,6 +135,54 @@ static void initialize_sntp(void)
     sntp_init();
 }
 
+void test(void *arg)
+{
+    // Create event queue for rotary encoders
+    event_queue = xQueueCreate(EV_QUEUE_LEN, sizeof(rotary_encoder_event_t));
+
+    // Setup rotary encoder library
+    ESP_ERROR_CHECK(rotary_encoder_init(event_queue));
+
+    // Add one encoder
+    memset(&encoder, 0, sizeof(rotary_encoder_t));
+    encoder.pin_a = RE_A_GPIO;
+    encoder.pin_b = RE_B_GPIO;
+    encoder.pin_btn = RE_BTN_GPIO;
+    ESP_ERROR_CHECK(rotary_encoder_add(&encoder));
+
+    rotary_encoder_event_t e;
+    int32_t val = 0;
+
+    ESP_LOGI(TAG, "Initial value: %" PRIi32, val);
+    while (1)
+    {
+        xQueueReceive(event_queue, &e, portMAX_DELAY);
+
+        switch (e.type)
+        {
+            case RE_ET_BTN_PRESSED:
+                ESP_LOGI(TAG, "Button pressed");
+                break;
+            case RE_ET_BTN_RELEASED:
+                ESP_LOGI(TAG, "Button released");
+                break;
+            case RE_ET_BTN_CLICKED:
+                ESP_LOGI(TAG, "Button clicked");
+                break;
+            case RE_ET_BTN_LONG_PRESSED:
+                ESP_LOGI(TAG, "Looooong pressed button");
+                break;
+            case RE_ET_CHANGED:
+                val += e.diff;
+                sprintf(device.digits, "%08d", val);
+                draw_display(&device);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 void app_main(void)
 {
     /* Configure the IOMUX register for pad BLINK_GPIO (some pads are
@@ -142,6 +200,7 @@ void app_main(void)
     led_status = 1;
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time);
     xTimerStart(ticker_timer, portMAX_DELAY);
+    xTaskCreate(test, TAG, configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL);
     vTaskDelay(pdMS_TO_TICKS(30000));
     for(;;);
 }

@@ -3,6 +3,7 @@
 cmake_minimum_required(VERSION 3.5)
 
 set(EXTRA_COMPONENT_DIRS connect)
+set(EXTRA_COMPONENT_DIRS encoder)
 set(EXTRA_COMPONENT_DIRS protocols)
 set(EXTRA_COMPONENT_DIRS ../esp-idf-lib/components)
 

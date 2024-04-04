@@ -37,8 +37,6 @@
 
 #define EV_QUEUE_LEN 5
 
-static const char *TAG = "encoder_example";
-
 static QueueHandle_t event_queue;
 static rotary_encoder_t encoder;
 
@@ -54,19 +52,25 @@ typedef struct {
     char digits[9];
     int edit_mode;
     max7219_t* display;
+    SemaphoreHandle_t mutex;
 } minuteman_t;
 
 static TimerHandle_t ticker_timer;
 static int led_status;
 static char strtime_buf[64];
-static char display_buf[10]; // 8 digits + decimal point + \0
 static max7219_t display;
 static minuteman_t device;
-StaticSemaphore_t semaphore;
+static TaskHandle_t render_task = NULL;
 
-void draw_display(minuteman_t* dev){
-    max7219_clear(dev->display);
-    max7219_draw_text_7seg(dev->display, 0, dev->digits);
+esp_err_t render_display(minuteman_t* dev){
+    if (xSemaphoreTake(dev->mutex, 0) != pdTRUE){
+        return ESP_ERR_INVALID_STATE;
+    }
+    /* ESP_ERROR_CHECK(max7219_clear(dev->display)); */
+    ESP_ERROR_CHECK(max7219_draw_text_7seg(dev->display, 0, dev->digits));
+    ESP_LOGI(__FUNCTION__, "Display updated");
+    xSemaphoreGive(dev->mutex);
+    return ESP_OK;
 }
 
 static void print_time(TimerHandle_t xTimer){
@@ -108,10 +112,11 @@ void display_init(max7219_t *display){
 }
 
 void minuteman_init(minuteman_t* dev, max7219_t* display){
-    /* TODO: Create semaphore for device */
     dev->display = display;
     dev->edit_mode = 0;
     sprintf(dev->digits, "00000000");
+    /* TODO: Check for errors on mutex create */
+    dev->mutex = xSemaphoreCreateMutex();
 }
 
 void set_timezone(){
@@ -135,7 +140,17 @@ static void initialize_sntp(void)
     sntp_init();
 }
 
-void test(void *arg)
+static void render_handler(void* arg){
+    ESP_LOGI(__FUNCTION__, "Render task started");
+    while(1){
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        ESP_LOGI(__FUNCTION__, "Render task awoken");
+        ESP_ERROR_CHECK(render_display(&device));
+    }
+
+}
+
+void encoder_handler(void *arg)
 {
     // Create event queue for rotary encoders
     event_queue = xQueueCreate(EV_QUEUE_LEN, sizeof(rotary_encoder_event_t));
@@ -153,7 +168,6 @@ void test(void *arg)
     rotary_encoder_event_t e;
     int32_t val = 0;
 
-    ESP_LOGI(TAG, "Initial value: %" PRIi32, val);
     while (1)
     {
         xQueueReceive(event_queue, &e, portMAX_DELAY);
@@ -161,21 +175,28 @@ void test(void *arg)
         switch (e.type)
         {
             case RE_ET_BTN_PRESSED:
-                ESP_LOGI(TAG, "Button pressed");
+                if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
+                    device.edit_mode = 1;
+                    xSemaphoreGive(device.mutex);
+                }
                 break;
             case RE_ET_BTN_RELEASED:
-                ESP_LOGI(TAG, "Button released");
                 break;
             case RE_ET_BTN_CLICKED:
-                ESP_LOGI(TAG, "Button clicked");
+                // Set to edit mode and create task that unsets it
                 break;
             case RE_ET_BTN_LONG_PRESSED:
-                ESP_LOGI(TAG, "Looooong pressed button");
                 break;
             case RE_ET_CHANGED:
                 val += e.diff;
-                sprintf(device.digits, "%08d", val);
-                draw_display(&device);
+                ESP_LOGI(__FUNCTION__, "Knob moved");
+                if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
+                    ESP_LOGI(__FUNCTION__, "Mutex aquired");
+                    sprintf(device.digits, "%08d", val);
+                    xSemaphoreGive(device.mutex);
+                }
+                render_display(&device);
+                xTaskNotifyGive(render_task);
                 break;
             default:
                 break;
@@ -198,9 +219,9 @@ void app_main(void)
     display_init(&display);
     minuteman_init(&device, &display);
     led_status = 1;
-    ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time);
-    xTimerStart(ticker_timer, portMAX_DELAY);
-    xTaskCreate(test, TAG, configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL);
-    vTaskDelay(pdMS_TO_TICKS(30000));
+    /* ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time); */
+    /* xTimerStart(ticker_timer, portMAX_DELAY); */
+    xTaskCreatePinnedToCore(&encoder_handler, "encoder task", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL,0);
+    xTaskCreatePinnedToCore(&render_handler, "render task", configMINIMAL_STACK_SIZE * 8, NULL, 5, &render_task,0);
     for(;;);
 }

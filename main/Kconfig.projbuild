@@ -32,4 +32,23 @@ menu "Minuteman Config"
         help
             GPIO number of CS
 
+    config PIN_ROT_ENCODER_A
+        int "GPIO pin A for rotary encoder input."
+        range 0 35
+        default 34 
+
+    config PIN_ROT_ENCODER_B
+        int "GPIO pin B for rotary encoder input."
+        range 0 35
+        default 35 
+
+    config PIN_ROT_ENCODER_BUTTON
+        int "GPIO pin for rotary encoder button input."
+        range 0 35
+        default 32 
+
+    config RE_EV_QUEUE_LEN
+        int "Event queue length for rotary encoder events"
+        default 5 
+
 endmenu

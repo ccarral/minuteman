@@ -31,11 +31,11 @@
 #define HOST    SPI2_HOST
 #endif
 
-#define RE_A_GPIO   34
-#define RE_B_GPIO   35
-#define RE_BTN_GPIO 32 
+#define RE_A_GPIO  CONFIG_PIN_ROT_ENCODER_A 
+#define RE_B_GPIO  CONFIG_PIN_ROT_ENCODER_B 
+#define RE_BTN_GPIO  CONFIG_PIN_ROT_ENCODER_BUTTON 
 
-#define EV_QUEUE_LEN 5
+#define EV_QUEUE_LEN CONFIG_RE_EV_QUEUE_LEN 
 
 static QueueHandle_t event_queue;
 static rotary_encoder_t encoder;
@@ -189,9 +189,7 @@ void encoder_handler(void *arg)
                 break;
             case RE_ET_CHANGED:
                 val += e.diff;
-                ESP_LOGI(__FUNCTION__, "Knob moved");
                 if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
-                    ESP_LOGI(__FUNCTION__, "Mutex aquired");
                     sprintf(device.digits, "%08d", val);
                     xSemaphoreGive(device.mutex);
                 }

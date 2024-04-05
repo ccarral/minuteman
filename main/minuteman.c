@@ -269,7 +269,7 @@ void encoder_handler(void *arg)
                 if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
                     if(minuteman_dev.state == ALARM_EDIT){
                         minuteman_dev.alarms[minuteman_dev.selected_alarm_idx] += e.diff;
-                        xTimerReset(return_to_clock_timer, portMAX_DELAY);
+                        enter_edit_mode_timers();
                     }
                     xSemaphoreGive(minuteman_dev.mutex);
                     ESP_LOGI(__FUNCTION__, "render called from RE value change");

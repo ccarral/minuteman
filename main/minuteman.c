@@ -61,10 +61,12 @@ typedef struct {
     time_t current_time;
     time_t alarms[2];
     int selected_alarm_idx;
+    bool display_on;
 } minuteman_t;
 
 static TimerHandle_t ticker_timer;
 static TimerHandle_t return_to_clock_timer;
+static TimerHandle_t toggle_display_timer;
 static char strtime_buf[9];
 static max7219_t display;
 static minuteman_t device;
@@ -73,13 +75,17 @@ static TaskHandle_t render_task = NULL;
 esp_err_t render_display(minuteman_t* dev){
     if (xSemaphoreTake(dev->mutex, 0) == pdTRUE){
         ESP_ERROR_CHECK(max7219_clear(dev->display));
-        switch(dev->state){
-            case CLOCK_MODE:
-                // Ticker has already updated display, do nothing
-                break;
-            case ALARM_EDIT:
-                sprintf(dev->digits, "%08ld", dev->alarms[dev->selected_alarm_idx]);
-              break;
+        if(!dev->display_on){
+            sprintf(dev->digits, "%s", "");
+        }else{
+            switch(dev->state){
+                case CLOCK_MODE:
+                    // Ticker has already updated display, do nothing
+                    break;
+                case ALARM_EDIT:
+                    sprintf(dev->digits, "%08ld", dev->alarms[dev->selected_alarm_idx]);
+                  break;
+            }
         }
         ESP_ERROR_CHECK(max7219_draw_text_7seg(dev->display, 0, dev->digits));
         ESP_LOGI(__FUNCTION__, "Display updated");
@@ -109,11 +115,18 @@ static void ticker(TimerHandle_t xTimer){
     }
 }
 
+void enter_edit_mode_timers(){
+    xTimerReset(return_to_clock_timer, portMAX_DELAY);
+    xTimerReset(toggle_display_timer, portMAX_DELAY);
+}
+
 static void return_to_clock_mode(TimerHandle_t xTimer){
     if (xSemaphoreTake(device.mutex, 0) == pdTRUE){
         device.state = CLOCK_MODE;
+        device.display_on = true;
         xSemaphoreGive(device.mutex);
     }
+    xTimerStop(toggle_display_timer, portMAX_DELAY);
     xTaskNotifyGive(render_task);
 }
 
@@ -168,6 +181,16 @@ void minuteman_init(minuteman_t* dev, max7219_t* display){
     dev->alarms[0] = 0;
     dev->alarms[1] = 0;
     dev->selected_alarm_idx = 0;
+    dev->display_on = true;
+}
+
+static void toggle_display(TimerHandle_t xTimer){
+    if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
+        device.display_on = !(device.display_on);
+        ESP_LOGI(__FUNCTION__, "display on: %d", device.display_on);
+        xSemaphoreGive(device.mutex);
+    }
+    xTaskNotifyGive(render_task);
 }
 
 void set_timezone(){
@@ -195,11 +218,11 @@ static void render_handler(void* arg){
     ESP_LOGI(__FUNCTION__, "Render task started");
     while(1){
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        ESP_LOGI(__FUNCTION__, "Render task awoken");
         ESP_ERROR_CHECK(render_display(&device));
     }
 }
 
+// TODO: Send device via arg*
 void encoder_handler(void *arg)
 {
 
@@ -216,9 +239,9 @@ void encoder_handler(void *arg)
                 if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
                     switch(device.state){
                         case CLOCK_MODE:
-                            xTimerReset(return_to_clock_timer, portMAX_DELAY);
                             device.state = ALARM_EDIT;
                             device.selected_alarm_idx = 0;
+                            enter_edit_mode_timers();
                             // TODO: Disable ticker timer
                             break;
                         case ALARM_EDIT:
@@ -227,6 +250,7 @@ void encoder_handler(void *arg)
                             }else{
                                 device.selected_alarm_idx += 1;
                                 device.state = ALARM_EDIT;
+                                enter_edit_mode_timers();
                                 xTimerReset(return_to_clock_timer, portMAX_DELAY);
                             }
                             break;
@@ -277,7 +301,9 @@ void app_main(void)
     encoder_init(&encoder);
     minuteman_init(&device, &display);
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, ticker);
+    // TODO: Make flash interval and return to clock mode timeout compile time configs
     return_to_clock_timer = xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000), pdFALSE, NULL, return_to_clock_mode);
+    toggle_display_timer = xTimerCreate("toggle disple on/off", pdMS_TO_TICKS(500), pdTRUE, NULL, toggle_display);
     xTimerStart(ticker_timer, portMAX_DELAY);
     xTaskCreatePinnedToCore(&encoder_handler, "encoder task", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL,0);
     xTaskCreatePinnedToCore(&render_handler, "render task", configMINIMAL_STACK_SIZE * 8, NULL, 5, &render_task,0);

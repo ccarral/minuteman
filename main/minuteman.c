@@ -111,6 +111,21 @@ void display_init(max7219_t *display){
     ESP_ERROR_CHECK(max7219_init(display));
 }
 
+void encoder_init(rotary_encoder_t* encoder){
+    // Create event queue for rotary encoders
+    event_queue = xQueueCreate(EV_QUEUE_LEN, sizeof(rotary_encoder_event_t));
+
+    // Setup rotary encoder library
+    ESP_ERROR_CHECK(rotary_encoder_init(event_queue));
+
+    // Add one encoder
+    memset(encoder, 0, sizeof(rotary_encoder_t));
+    encoder->pin_a = RE_A_GPIO;
+    encoder->pin_b = RE_B_GPIO;
+    encoder->pin_btn = RE_BTN_GPIO;
+    ESP_ERROR_CHECK(rotary_encoder_add(encoder));
+}
+
 void minuteman_init(minuteman_t* dev, max7219_t* display){
     dev->display = display;
     dev->edit_mode = 0;
@@ -152,18 +167,6 @@ static void render_handler(void* arg){
 
 void encoder_handler(void *arg)
 {
-    // Create event queue for rotary encoders
-    event_queue = xQueueCreate(EV_QUEUE_LEN, sizeof(rotary_encoder_event_t));
-
-    // Setup rotary encoder library
-    ESP_ERROR_CHECK(rotary_encoder_init(event_queue));
-
-    // Add one encoder
-    memset(&encoder, 0, sizeof(rotary_encoder_t));
-    encoder.pin_a = RE_A_GPIO;
-    encoder.pin_b = RE_B_GPIO;
-    encoder.pin_btn = RE_BTN_GPIO;
-    ESP_ERROR_CHECK(rotary_encoder_add(&encoder));
 
     rotary_encoder_event_t e;
     int32_t val = 0;
@@ -215,6 +218,7 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init()); 
     initialize_sntp();
     display_init(&display);
+    encoder_init(&encoder);
     minuteman_init(&device, &display);
     led_status = 1;
     /* ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time); */

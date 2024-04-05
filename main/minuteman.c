@@ -116,6 +116,7 @@ static void ticker(TimerHandle_t xTimer){
 }
 
 void enter_edit_mode_timers(){
+    xTimerStop(ticker_timer, portMAX_DELAY);
     xTimerReset(return_to_clock_timer, portMAX_DELAY);
     xTimerReset(toggle_display_timer, portMAX_DELAY);
 }
@@ -127,6 +128,7 @@ static void return_to_clock_mode(TimerHandle_t xTimer){
         xSemaphoreGive(device.mutex);
     }
     xTimerStop(toggle_display_timer, portMAX_DELAY);
+    xTimerReset(ticker_timer, portMAX_DELAY);
     xTaskNotifyGive(render_task);
 }
 

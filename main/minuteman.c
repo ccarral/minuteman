@@ -59,6 +59,8 @@ typedef struct {
     max7219_t* display;
     SemaphoreHandle_t mutex;
     time_t current_time;
+    time_t alarms[2];
+    int selected_alarm_idx;
 } minuteman_t;
 
 static TimerHandle_t ticker_timer;
@@ -70,6 +72,14 @@ static TaskHandle_t render_task = NULL;
 esp_err_t render_display(minuteman_t* dev){
     if (xSemaphoreTake(dev->mutex, 0) == pdTRUE){
         ESP_ERROR_CHECK(max7219_clear(dev->display));
+        switch(dev->state){
+            case CLOCK_MODE:
+                // Ticker has already updated display, do nothing
+                break;
+            case ALARM_EDIT:
+                sprintf(dev->digits, "%08ld", dev->alarms[dev->selected_alarm_idx]);
+              break;
+        }
         ESP_ERROR_CHECK(max7219_draw_text_7seg(dev->display, 0, dev->digits));
         ESP_LOGI(__FUNCTION__, "Display updated");
         xSemaphoreGive(dev->mutex);
@@ -146,6 +156,9 @@ void minuteman_init(minuteman_t* dev, max7219_t* display){
     sprintf(dev->digits, "00000000");
     /* TODO: Check for errors on mutex create */
     dev->mutex = xSemaphoreCreateMutex();
+    dev->alarms[0] = 0;
+    dev->alarms[1] = 0;
+    dev->selected_alarm_idx = 0;
 }
 
 void set_timezone(){
@@ -196,14 +209,20 @@ void encoder_handler(void *arg)
                     switch(device.state){
                         case CLOCK_MODE:
                             device.state = ALARM_EDIT;
+                            device.selected_alarm_idx = 0;
                             // TODO: Disable ticker timer
                             break;
                         case ALARM_EDIT:
-                            device.state = CLOCK_MODE;
+                            if(device.selected_alarm_idx == 1){
+                                device.state = CLOCK_MODE;
+                            }else{
+                                device.selected_alarm_idx += 1;
+                                device.state = ALARM_EDIT;
+                            }
                             break;
-
                     }
                     xSemaphoreGive(device.mutex);
+                    ESP_LOGI(__FUNCTION__, "render called from RE button press");
                     xTaskNotifyGive(render_task);
                 }
                 break;
@@ -216,13 +235,12 @@ void encoder_handler(void *arg)
                 break;
             case RE_ET_CHANGED:
                 val += e.diff;
-                bool call_render = false;
-                if(xSemaphoreTake(device.mutex, 0) == pdTRUE && device.state == ALARM_EDIT){
-                    sprintf(device.digits, "%08d", val);
-                    call_render = true;
+                if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
+                    if(device.state == ALARM_EDIT){
+                        device.alarms[device.selected_alarm_idx] += e.diff;
+                    }
                     xSemaphoreGive(device.mutex);
-                }
-                if (call_render){
+                    ESP_LOGI(__FUNCTION__, "render called from RE value change");
                     xTaskNotifyGive(render_task);
                 }
                 break;

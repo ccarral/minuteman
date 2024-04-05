@@ -48,40 +48,54 @@ static rotary_encoder_t encoder;
 #define PIN_NUM_CLK CONFIG_PIN_NUM_CLK
 #define PIN_NUM_CS CONFIG_PIN_NUM_CS
 
+typedef enum{
+    CLOCK_MODE,
+    ALARM_EDIT
+} minuteman_state_t;
+
 typedef struct {
     char digits[9];
-    int edit_mode;
+    minuteman_state_t state;
     max7219_t* display;
     SemaphoreHandle_t mutex;
+    time_t current_time;
 } minuteman_t;
 
 static TimerHandle_t ticker_timer;
-static int led_status;
-static char strtime_buf[64];
+static char strtime_buf[9];
 static max7219_t display;
 static minuteman_t device;
 static TaskHandle_t render_task = NULL;
 
 esp_err_t render_display(minuteman_t* dev){
-    if (xSemaphoreTake(dev->mutex, 0) != pdTRUE){
-        return ESP_ERR_INVALID_STATE;
+    if (xSemaphoreTake(dev->mutex, 0) == pdTRUE){
+        ESP_ERROR_CHECK(max7219_clear(dev->display));
+        ESP_ERROR_CHECK(max7219_draw_text_7seg(dev->display, 0, dev->digits));
+        ESP_LOGI(__FUNCTION__, "Display updated");
+        xSemaphoreGive(dev->mutex);
     }
-    /* ESP_ERROR_CHECK(max7219_clear(dev->display)); */
-    ESP_ERROR_CHECK(max7219_draw_text_7seg(dev->display, 0, dev->digits));
-    ESP_LOGI(__FUNCTION__, "Display updated");
-    xSemaphoreGive(dev->mutex);
     return ESP_OK;
 }
 
-static void print_time(TimerHandle_t xTimer){
+static void ticker(TimerHandle_t xTimer){
     time_t now = 0;
     time(&now);
     static struct tm timeinfo = { 0 };
     localtime_r(&now, &timeinfo);
-    strftime(strtime_buf, sizeof(strtime_buf), "%c", &timeinfo);
-    /* strftime(device.digits, sizeof(device.digits), "00%I%M%S", &timeinfo); */
-    /* printf("%s\n", strtime_buf); */
-    /* draw_display(&device); */
+    strftime(strtime_buf, sizeof(strtime_buf), "00%I%M%S", &timeinfo);
+    bool call_render = false;
+    if (xSemaphoreTake(device.mutex, 0) == pdTRUE){
+        device.current_time = now;
+        if(device.state == CLOCK_MODE){
+            ESP_LOGI(__FUNCTION__, "Time updated");
+            sprintf(device.digits,"%s", strtime_buf);
+            call_render = true;
+        }
+        xSemaphoreGive(device.mutex);
+        if (call_render){
+            xTaskNotifyGive(render_task);
+        }
+    }
 }
 
 void setup_gpio(){
@@ -128,7 +142,7 @@ void encoder_init(rotary_encoder_t* encoder){
 
 void minuteman_init(minuteman_t* dev, max7219_t* display){
     dev->display = display;
-    dev->edit_mode = 0;
+    dev->state = CLOCK_MODE;
     sprintf(dev->digits, "00000000");
     /* TODO: Check for errors on mutex create */
     dev->mutex = xSemaphoreCreateMutex();
@@ -179,8 +193,18 @@ void encoder_handler(void *arg)
         {
             case RE_ET_BTN_PRESSED:
                 if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
-                    device.edit_mode = 1;
+                    switch(device.state){
+                        case CLOCK_MODE:
+                            device.state = ALARM_EDIT;
+                            // TODO: Disable ticker timer
+                            break;
+                        case ALARM_EDIT:
+                            device.state = CLOCK_MODE;
+                            break;
+
+                    }
                     xSemaphoreGive(device.mutex);
+                    xTaskNotifyGive(render_task);
                 }
                 break;
             case RE_ET_BTN_RELEASED:
@@ -192,12 +216,15 @@ void encoder_handler(void *arg)
                 break;
             case RE_ET_CHANGED:
                 val += e.diff;
-                if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
+                bool call_render = false;
+                if(xSemaphoreTake(device.mutex, 0) == pdTRUE && device.state == ALARM_EDIT){
                     sprintf(device.digits, "%08d", val);
+                    call_render = true;
                     xSemaphoreGive(device.mutex);
                 }
-                render_display(&device);
-                xTaskNotifyGive(render_task);
+                if (call_render){
+                    xTaskNotifyGive(render_task);
+                }
                 break;
             default:
                 break;
@@ -220,9 +247,8 @@ void app_main(void)
     display_init(&display);
     encoder_init(&encoder);
     minuteman_init(&device, &display);
-    led_status = 1;
-    /* ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, print_time); */
-    /* xTimerStart(ticker_timer, portMAX_DELAY); */
+    ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, ticker);
+    xTimerStart(ticker_timer, portMAX_DELAY);
     xTaskCreatePinnedToCore(&encoder_handler, "encoder task", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL,0);
     xTaskCreatePinnedToCore(&render_handler, "render task", configMINIMAL_STACK_SIZE * 8, NULL, 5, &render_task,0);
     for(;;);

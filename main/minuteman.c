@@ -64,6 +64,7 @@ typedef struct {
 } minuteman_t;
 
 static TimerHandle_t ticker_timer;
+static TimerHandle_t return_to_clock_timer;
 static char strtime_buf[9];
 static max7219_t display;
 static minuteman_t device;
@@ -106,6 +107,14 @@ static void ticker(TimerHandle_t xTimer){
             xTaskNotifyGive(render_task);
         }
     }
+}
+
+static void return_to_clock_mode(TimerHandle_t xTimer){
+    if (xSemaphoreTake(device.mutex, 0) == pdTRUE){
+        device.state = CLOCK_MODE;
+        xSemaphoreGive(device.mutex);
+    }
+    xTaskNotifyGive(render_task);
 }
 
 void setup_gpio(){
@@ -189,7 +198,6 @@ static void render_handler(void* arg){
         ESP_LOGI(__FUNCTION__, "Render task awoken");
         ESP_ERROR_CHECK(render_display(&device));
     }
-
 }
 
 void encoder_handler(void *arg)
@@ -208,6 +216,7 @@ void encoder_handler(void *arg)
                 if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
                     switch(device.state){
                         case CLOCK_MODE:
+                            xTimerReset(return_to_clock_timer, portMAX_DELAY);
                             device.state = ALARM_EDIT;
                             device.selected_alarm_idx = 0;
                             // TODO: Disable ticker timer
@@ -218,6 +227,7 @@ void encoder_handler(void *arg)
                             }else{
                                 device.selected_alarm_idx += 1;
                                 device.state = ALARM_EDIT;
+                                xTimerReset(return_to_clock_timer, portMAX_DELAY);
                             }
                             break;
                     }
@@ -238,6 +248,7 @@ void encoder_handler(void *arg)
                 if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
                     if(device.state == ALARM_EDIT){
                         device.alarms[device.selected_alarm_idx] += e.diff;
+                        xTimerReset(return_to_clock_timer, portMAX_DELAY);
                     }
                     xSemaphoreGive(device.mutex);
                     ESP_LOGI(__FUNCTION__, "render called from RE value change");
@@ -266,6 +277,7 @@ void app_main(void)
     encoder_init(&encoder);
     minuteman_init(&device, &display);
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, ticker);
+    return_to_clock_timer = xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000), pdFALSE, NULL, return_to_clock_mode);
     xTimerStart(ticker_timer, portMAX_DELAY);
     xTaskCreatePinnedToCore(&encoder_handler, "encoder task", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL,0);
     xTaskCreatePinnedToCore(&render_handler, "render task", configMINIMAL_STACK_SIZE * 8, NULL, 5, &render_task,0);

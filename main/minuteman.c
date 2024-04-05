@@ -69,7 +69,7 @@ static TimerHandle_t return_to_clock_timer;
 static TimerHandle_t toggle_display_timer;
 static char strtime_buf[9];
 static max7219_t display;
-static minuteman_t device;
+static minuteman_t minuteman_dev;
 static TaskHandle_t render_task = NULL;
 
 esp_err_t render_display(minuteman_t* dev){
@@ -101,14 +101,14 @@ static void ticker(TimerHandle_t xTimer){
     localtime_r(&now, &timeinfo);
     strftime(strtime_buf, sizeof(strtime_buf), "00%I%M%S", &timeinfo);
     bool call_render = false;
-    if (xSemaphoreTake(device.mutex, 0) == pdTRUE){
-        device.current_time = now;
-        if(device.state == CLOCK_MODE){
+    if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+        minuteman_dev.current_time = now;
+        if(minuteman_dev.state == CLOCK_MODE){
             ESP_LOGI(__FUNCTION__, "Time updated");
-            sprintf(device.digits,"%s", strtime_buf);
+            sprintf(minuteman_dev.digits,"%s", strtime_buf);
             call_render = true;
         }
-        xSemaphoreGive(device.mutex);
+        xSemaphoreGive(minuteman_dev.mutex);
         if (call_render){
             xTaskNotifyGive(render_task);
         }
@@ -122,10 +122,10 @@ void enter_edit_mode_timers(){
 }
 
 static void return_to_clock_mode(TimerHandle_t xTimer){
-    if (xSemaphoreTake(device.mutex, 0) == pdTRUE){
-        device.state = CLOCK_MODE;
-        device.display_on = true;
-        xSemaphoreGive(device.mutex);
+    if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+        minuteman_dev.state = CLOCK_MODE;
+        minuteman_dev.display_on = true;
+        xSemaphoreGive(minuteman_dev.mutex);
     }
     xTimerStop(toggle_display_timer, portMAX_DELAY);
     xTimerReset(ticker_timer, portMAX_DELAY);
@@ -182,10 +182,10 @@ void minuteman_init(minuteman_t* dev, max7219_t* display){
 }
 
 static void toggle_display(TimerHandle_t xTimer){
-    if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
-        device.display_on = !(device.display_on);
-        ESP_LOGI(__FUNCTION__, "display on: %d", device.display_on);
-        xSemaphoreGive(device.mutex);
+    if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+        minuteman_dev.display_on = !(minuteman_dev.display_on);
+        ESP_LOGI(__FUNCTION__, "display on: %d", minuteman_dev.display_on);
+        xSemaphoreGive(minuteman_dev.mutex);
     }
     xTaskNotifyGive(render_task);
 }
@@ -215,7 +215,7 @@ static void render_handler(void* arg){
     ESP_LOGI(__FUNCTION__, "Render task started");
     while(1){
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        ESP_ERROR_CHECK(render_display(&device));
+        ESP_ERROR_CHECK(render_display(&minuteman_dev));
     }
 }
 
@@ -233,26 +233,26 @@ void encoder_handler(void *arg)
         switch (e.type)
         {
             case RE_ET_BTN_PRESSED:
-                if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
-                    switch(device.state){
+                if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+                    switch(minuteman_dev.state){
                         case CLOCK_MODE:
-                            device.state = ALARM_EDIT;
-                            device.selected_alarm_idx = 0;
+                            minuteman_dev.state = ALARM_EDIT;
+                            minuteman_dev.selected_alarm_idx = 0;
                             enter_edit_mode_timers();
                             // TODO: Disable ticker timer
                             break;
                         case ALARM_EDIT:
-                            if(device.selected_alarm_idx == 1){
-                                device.state = CLOCK_MODE;
+                            if(minuteman_dev.selected_alarm_idx == 1){
+                                minuteman_dev.state = CLOCK_MODE;
                             }else{
-                                device.selected_alarm_idx += 1;
-                                device.state = ALARM_EDIT;
+                                minuteman_dev.selected_alarm_idx += 1;
+                                minuteman_dev.state = ALARM_EDIT;
                                 enter_edit_mode_timers();
                                 xTimerReset(return_to_clock_timer, portMAX_DELAY);
                             }
                             break;
                     }
-                    xSemaphoreGive(device.mutex);
+                    xSemaphoreGive(minuteman_dev.mutex);
                     ESP_LOGI(__FUNCTION__, "render called from RE button press");
                     xTaskNotifyGive(render_task);
                 }
@@ -266,12 +266,12 @@ void encoder_handler(void *arg)
                 break;
             case RE_ET_CHANGED:
                 val += e.diff;
-                if(xSemaphoreTake(device.mutex, 0) == pdTRUE){
-                    if(device.state == ALARM_EDIT){
-                        device.alarms[device.selected_alarm_idx] += e.diff;
+                if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+                    if(minuteman_dev.state == ALARM_EDIT){
+                        minuteman_dev.alarms[minuteman_dev.selected_alarm_idx] += e.diff;
                         xTimerReset(return_to_clock_timer, portMAX_DELAY);
                     }
-                    xSemaphoreGive(device.mutex);
+                    xSemaphoreGive(minuteman_dev.mutex);
                     ESP_LOGI(__FUNCTION__, "render called from RE value change");
                     xTaskNotifyGive(render_task);
                 }
@@ -289,7 +289,7 @@ void app_main(void)
     initialize_sntp();
     display_init(&display);
     encoder_init(&encoder);
-    minuteman_init(&device, &display);
+    minuteman_init(&minuteman_dev, &display);
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, ticker);
     // TODO: Make flash interval and return to clock mode timeout compile time configs
     return_to_clock_timer = xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000), pdFALSE, NULL, return_to_clock_mode);

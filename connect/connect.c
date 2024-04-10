@@ -76,7 +76,7 @@
 #endif
 
 static int s_active_interfaces = 0;
-static xSemaphoreHandle s_semph_get_ip_addrs;
+static SemaphoreHandle_t s_semph_get_ip_addrs;
 static esp_ip4_addr_t s_ip_addr;
 static esp_netif_t *s_example_esp_netif = NULL;
 

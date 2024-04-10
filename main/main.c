@@ -22,7 +22,6 @@
 #include "esp_event.h"
 #include "wifi.h"
 #include "esp_sntp.h"
-#include <max7219.h>
 #include <encoder.h>
 #include <minuteman.h>
 

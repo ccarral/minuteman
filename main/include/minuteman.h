@@ -35,3 +35,5 @@ typedef struct {
 esp_err_t minuteman_render_display(minuteman_t* dev);
 
 esp_err_t minuteman_init(minuteman_t* dev);
+
+bool minuteman_check_active_alarm(minuteman_t* dev, int alarm_idx);

@@ -39,21 +39,59 @@ static button_t button_alarm0;
 static button_t button_alarm1;
 
 // TODO: Set in config
-#define ENCODER_INPUT_SEC_MULTIPLIER 600
+#define ENCODER_INPUT_SEC_MULTIPLIER 300
 
 static TimerHandle_t ticker_timer;
 static TimerHandle_t return_to_clock_timer;
+static TimerHandle_t alarm_disable_timer;
 static TimerHandle_t toggle_display_timer;
 static minuteman_t minuteman_dev;
 static TaskHandle_t render_task = NULL;
+static TaskHandle_t alarm_handler_task;
 
 static void ticker(TimerHandle_t xTimer){
     if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
         time(&minuteman_dev.current_time);
+        if(minuteman_check_active_alarm(&minuteman_dev, 0)){
+            xTaskNotifyGive(alarm_handler_task);
+        }
+        if(minuteman_check_active_alarm(&minuteman_dev, 1)){
+            xTaskNotifyGive(alarm_handler_task);
+        }
         xSemaphoreGive(minuteman_dev.mutex);
         xTaskNotifyGive(render_task);
     }
 }
+
+static void disable_alarm(TimerHandle_t xTimer){
+    if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+        ESP_LOGI(__FUNCTION__, "alarm 0 set to inactive");
+        minuteman_dev.alarms[0].active = false;
+        xSemaphoreGive(minuteman_dev.mutex);
+        xTaskNotifyGive(alarm_handler_task);
+    }
+}
+
+static void alarm_handler(void* arg){
+    while(1){
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        ESP_LOGI(__FUNCTION__, "alarm 0 handler awoken");
+        if(xSemaphoreTake(minuteman_dev.mutex, portMAX_DELAY) == pdTRUE){
+            // TODO: If snooze, create timer that will set alarm to active in SNOZE_TIME seconds
+            if(minuteman_dev.alarms[0].enabled && minuteman_dev.alarms[0].active){
+                // Sound alarm and start timer to disable it automatically after a while
+                ESP_LOGI(__FUNCTION__, "alarm 0 sounding!!");
+                xTimerReset(alarm_disable_timer, portMAX_DELAY);
+            }
+            else if(minuteman_dev.alarms[0].enabled && !minuteman_dev.alarms[0].active){
+                // Stop sounding alarm
+                ESP_LOGI(__FUNCTION__, "alarm 0 stopped sounding");
+            }
+            xSemaphoreGive(minuteman_dev.mutex);
+        }
+    }
+}
+
 
 void enter_edit_mode_timers(){
     xTimerStop(ticker_timer, portMAX_DELAY);
@@ -125,7 +163,7 @@ static void initialize_sntp(void)
 }
 
 static void render_handler(void* arg){
-    ESP_LOGI(__FUNCTION__, "Render task started");
+    ESP_LOGI(__FUNCTION__, "render task started");
     while(1){
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         ESP_ERROR_CHECK(minuteman_render_display(&minuteman_dev));
@@ -136,6 +174,7 @@ static void render_handler(void* arg){
 void encoder_handler(void *arg)
 {
 
+    ESP_LOGI(__FUNCTION__, "encoder task started");
     rotary_encoder_event_t e;
 
     while (1)
@@ -179,7 +218,6 @@ void encoder_handler(void *arg)
                         enter_edit_mode_timers();
                     }
                     xSemaphoreGive(minuteman_dev.mutex);
-                    ESP_LOGI(__FUNCTION__, "render called from RE value change");
                     xTaskNotifyGive(render_task);
                 }
                 break;
@@ -197,6 +235,7 @@ static void on_button0_press(button_t *btn, button_state_t state)
     if(state == BUTTON_PRESSED){
         if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
             minuteman_dev.alarms[0].enabled = true;
+            ESP_LOGI(__FUNCTION__, "alarm 0 enabled");
             xSemaphoreGive(minuteman_dev.mutex);
             xTaskNotifyGive(render_task);
         }
@@ -204,6 +243,7 @@ static void on_button0_press(button_t *btn, button_state_t state)
     if(state == BUTTON_RELEASED){
         if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
             minuteman_dev.alarms[0].enabled = false;
+            ESP_LOGI(__FUNCTION__, "alarm 0 disabled");
             xSemaphoreGive(minuteman_dev.mutex);
             xTaskNotifyGive(render_task);
         }
@@ -215,6 +255,7 @@ static void on_button1_press(button_t *btn, button_state_t state)
     if(state == BUTTON_PRESSED){
         if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
             minuteman_dev.alarms[1].enabled = true;
+            ESP_LOGI(__FUNCTION__, "alarm 1 enabled");
             xSemaphoreGive(minuteman_dev.mutex);
             xTaskNotifyGive(render_task);
         }
@@ -222,6 +263,7 @@ static void on_button1_press(button_t *btn, button_state_t state)
     if(state == BUTTON_RELEASED){
         if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
             minuteman_dev.alarms[1].enabled = false;
+            ESP_LOGI(__FUNCTION__, "alarm 1 disabled");
             xSemaphoreGive(minuteman_dev.mutex);
             xTaskNotifyGive(render_task);
         }
@@ -257,8 +299,11 @@ void app_main(void)
     // TODO: Make flash interval and return to clock mode timeout compile time configs
     return_to_clock_timer = xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000), pdFALSE, NULL, return_to_clock_mode);
     toggle_display_timer = xTimerCreate("toggle disple on/off", pdMS_TO_TICKS(500), pdTRUE, NULL, toggle_display);
+    /* TODO: Make alarm automatic disable timeout a config value */
+    alarm_disable_timer = xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(10000), pdFALSE, NULL, disable_alarm);
     xTimerStart(ticker_timer, portMAX_DELAY);
+    xTaskCreatePinnedToCore(&alarm_handler, "alarm task", configMINIMAL_STACK_SIZE * 8, NULL, 5, &alarm_handler_task, 0);
     xTaskCreatePinnedToCore(&encoder_handler, "encoder task", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL,0);
-    xTaskCreatePinnedToCore(&render_handler, "render task", configMINIMAL_STACK_SIZE * 8, NULL, 5, &render_task,0);
+    xTaskCreatePinnedToCore(&render_handler, "render task", configMINIMAL_STACK_SIZE * 8, NULL, 5, &render_task, 0);
     for(;;);
 }

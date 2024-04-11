@@ -35,7 +35,8 @@
 
 static QueueHandle_t event_queue;
 static rotary_encoder_t encoder;
-static button_t btn1;
+static button_t button_alarm0;
+static button_t button_alarm1;
 
 // TODO: Set in config
 #define ENCODER_INPUT_SEC_MULTIPLIER 600
@@ -196,7 +197,7 @@ void encoder_handler(void *arg)
     }
 }
 
-static void on_button(button_t *btn, button_state_t state)
+static void on_button0_press(button_t *btn, button_state_t state)
 {
     if(state == BUTTON_PRESSED){
         if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
@@ -213,13 +214,40 @@ static void on_button(button_t *btn, button_state_t state)
         }
     }
 }
-void init_button(){
-    btn1.gpio = GPIO_NUM_25;
-    btn1.pressed_level = 0;
-    btn1.internal_pull = true;
-    btn1.autorepeat = false;
-    btn1.callback = on_button;
-    ESP_ERROR_CHECK(button_init(&btn1));
+
+static void on_button1_press(button_t *btn, button_state_t state)
+{
+    if(state == BUTTON_PRESSED){
+        if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+            minuteman_dev.alarms[1].enabled = true;
+            xSemaphoreGive(minuteman_dev.mutex);
+            xTaskNotifyGive(render_task);
+        }
+    }
+    if(state == BUTTON_RELEASED){
+        if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+            minuteman_dev.alarms[1].enabled = false;
+            xSemaphoreGive(minuteman_dev.mutex);
+            xTaskNotifyGive(render_task);
+        }
+    }
+}
+esp_err_t init_alarm_enable_buttons(){
+    /* TODO: Set GPIO ports in menuconfig */
+    button_alarm0.gpio = GPIO_NUM_25;
+    button_alarm0.pressed_level = 0;
+    button_alarm0.internal_pull = true;
+    button_alarm0.autorepeat = false;
+    button_alarm0.callback = on_button0_press;
+    CHECK(button_init(&button_alarm0));
+
+    button_alarm1.gpio = GPIO_NUM_26;
+    button_alarm1.pressed_level = 0;
+    button_alarm1.internal_pull = true;
+    button_alarm1.autorepeat = false;
+    button_alarm1.callback = on_button1_press;
+    CHECK(button_init(&button_alarm1));
+    return ESP_OK;
 }
 
 void app_main(void)
@@ -229,7 +257,7 @@ void app_main(void)
     initialize_sntp();
     encoder_init(&encoder);
     minuteman_init(&minuteman_dev);
-    init_button();
+    init_alarm_enable_buttons();
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, ticker);
     // TODO: Make flash interval and return to clock mode timeout compile time configs
     return_to_clock_timer = xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000), pdFALSE, NULL, return_to_clock_mode);

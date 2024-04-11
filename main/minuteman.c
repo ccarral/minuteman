@@ -14,6 +14,7 @@
 #include "sdkconfig.h"
 #include "esp_log.h"
 #include "esp_err.h"
+#include "driver/gpio.h"
 #include <time.h>
 #include <sys/time.h>
 #include "nvs_flash.h"
@@ -57,8 +58,16 @@ esp_err_t minuteman_render_display(minuteman_t* dev){
             }
         }
         CHECK(max7219_draw_text_7seg(dev->display, 2, dev->digits));
-        CHECK(max7219_set_digit(dev->display, 0, 0b11111111));
-        CHECK(max7219_set_digit(dev->display, 1, 0b00000000));
+        if(dev->alarms[0].enabled){
+            CHECK(max7219_set_digit(dev->display, 0, 0b11111111));
+        }else{
+            CHECK(max7219_set_digit(dev->display, 0, 0));
+        }
+        if(dev->alarms[1].enabled){
+            CHECK(max7219_set_digit(dev->display, 1, 0b11111111));
+        }else{
+            CHECK(max7219_set_digit(dev->display, 1, 0));
+        }
         ESP_LOGI(__FUNCTION__, "Display updated");
         xSemaphoreGive(dev->mutex);
     }

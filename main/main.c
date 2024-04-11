@@ -24,6 +24,7 @@
 #include "esp_sntp.h"
 #include <encoder.h>
 #include <minuteman.h>
+#include <button.h>
 
 
 #define RE_A_GPIO  CONFIG_PIN_ROT_ENCODER_A 
@@ -34,6 +35,7 @@
 
 static QueueHandle_t event_queue;
 static rotary_encoder_t encoder;
+static button_t btn1;
 
 // TODO: Set in config
 #define ENCODER_INPUT_SEC_MULTIPLIER 600
@@ -194,6 +196,32 @@ void encoder_handler(void *arg)
     }
 }
 
+static void on_button(button_t *btn, button_state_t state)
+{
+    if(state == BUTTON_PRESSED){
+        if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+            minuteman_dev.alarms[0].enabled = true;
+            xSemaphoreGive(minuteman_dev.mutex);
+            xTaskNotifyGive(render_task);
+        }
+    }
+    if(state == BUTTON_RELEASED){
+        if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+            minuteman_dev.alarms[0].enabled = false;
+            xSemaphoreGive(minuteman_dev.mutex);
+            xTaskNotifyGive(render_task);
+        }
+    }
+}
+void init_button(){
+    btn1.gpio = GPIO_NUM_25;
+    btn1.pressed_level = 0;
+    btn1.internal_pull = true;
+    btn1.autorepeat = false;
+    btn1.callback = on_button;
+    ESP_ERROR_CHECK(button_init(&btn1));
+}
+
 void app_main(void)
 {
     set_timezone();
@@ -201,6 +229,7 @@ void app_main(void)
     initialize_sntp();
     encoder_init(&encoder);
     minuteman_init(&minuteman_dev);
+    init_button();
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, ticker);
     // TODO: Make flash interval and return to clock mode timeout compile time configs
     return_to_clock_timer = xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000), pdFALSE, NULL, return_to_clock_mode);

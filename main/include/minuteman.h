@@ -5,6 +5,8 @@
 #include <max7219.h>
 #include <time.h>
 
+#define CHECK(x) do { esp_err_t __; if ((__ = x) != ESP_OK) return __; } while (0)
+
 typedef enum{
     CLOCK_MODE,
     ALARM_EDIT

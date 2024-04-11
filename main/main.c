@@ -122,11 +122,11 @@ static void initialize_sntp(void)
 {
     ESP_LOGI(__FUNCTION__, "Initializing SNTP");
     wifi_init_sta();
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_set_sync_mode(SNTP_SYNC_MODE_IMMED);
-    sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(0, "pool.ntp.org");
     sntp_set_time_sync_notification_cb(time_sync_notification_cb);
-    sntp_init();
+    esp_sntp_init();
 }
 
 static void render_handler(void* arg){

@@ -35,7 +35,6 @@
 #endif
 
 #define PIN_NUM_CS CONFIG_PIN_NUM_CS
-#define CHECK(x) do { esp_err_t __; if ((__ = x) != ESP_OK) return __; } while (0)
 static char buf[6];
 
 #define TIME_FMT "%H%M%S"
@@ -58,6 +57,7 @@ esp_err_t minuteman_render_display(minuteman_t* dev){
             }
         }
         CHECK(max7219_draw_text_7seg(dev->display, 2, dev->digits));
+        /* Buttons mean different things depending on edit mode enabled or disabled */
         if(dev->alarms[0].enabled){
             CHECK(max7219_set_digit(dev->display, 0, 0b11111111));
         }else{

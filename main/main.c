@@ -48,13 +48,8 @@ static minuteman_t minuteman_dev;
 static TaskHandle_t render_task = NULL;
 
 static void ticker(TimerHandle_t xTimer){
-    struct tm timeinfo = { 0 };
     if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
         time(&minuteman_dev.current_time);
-        if(minuteman_dev.state == CLOCK_MODE){
-            ESP_LOGI(__FUNCTION__, "Time updated");
-            strftime(minuteman_dev.digits, sizeof(minuteman_dev.digits), "00%H%M%S", &timeinfo);
-        }
         xSemaphoreGive(minuteman_dev.mutex);
         xTaskNotifyGive(render_task);
     }

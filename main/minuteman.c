@@ -35,24 +35,30 @@
 
 #define PIN_NUM_CS CONFIG_PIN_NUM_CS
 #define CHECK(x) do { esp_err_t __; if ((__ = x) != ESP_OK) return __; } while (0)
+static char buf[6];
+
+#define TIME_FMT "%H%M%S"
 
 esp_err_t minuteman_render_display(minuteman_t* dev){
     if (xSemaphoreTake(dev->mutex, 0) == pdTRUE){
         CHECK(max7219_clear(dev->display));
         if(!dev->display_on){
-            sprintf(dev->digits, "%s", "");
+            sprintf(dev->digits, "%s", "      ");
         }else{
             switch(dev->state){
                 case CLOCK_MODE:
-                    // Ticker has already updated display, do nothing
+                    localtime_r(&dev->current_time, &dev->timeinfo);
+                    strftime(dev->digits, sizeof(dev->digits), TIME_FMT, &dev->timeinfo);
                     break;
                 case ALARM_EDIT:
-                    localtime_r(&dev->alarms[dev->selected_alarm_idx], &dev->timeinfo);
-                    strftime(dev->digits, sizeof(dev->digits), "00%H%M%S", &dev->timeinfo);
+                    localtime_r(&dev->alarms[dev->selected_alarm_idx].timeval, &dev->timeinfo);
+                    strftime(dev->digits, sizeof(dev->digits), TIME_FMT, &dev->timeinfo);
                   break;
             }
         }
-        CHECK(max7219_draw_text_7seg(dev->display, 0, dev->digits));
+        CHECK(max7219_draw_text_7seg(dev->display, 2, dev->digits));
+        CHECK(max7219_set_digit(dev->display, 0, 0b11111111));
+        CHECK(max7219_set_digit(dev->display, 1, 0b00000000));
         ESP_LOGI(__FUNCTION__, "Display updated");
         xSemaphoreGive(dev->mutex);
     }
@@ -79,7 +85,15 @@ esp_err_t display_init(max7219_t *display){
 
     CHECK(max7219_init_desc(display, HOST, MAX7219_MAX_CLOCK_SPEED_HZ, PIN_NUM_CS));
     CHECK(max7219_init(display));
+    max7219_set_brightness(display, MAX7219_MAX_BRIGHTNESS/2);
     return ESP_OK;
+}
+
+void init_alarm(minuteman_alarm_t* alarm){
+    alarm->enabled = false;
+    alarm->active = false;
+    alarm->snoozed = false;
+    alarm->timeval = 0;
 }
 
 esp_err_t minuteman_init(minuteman_t* dev){
@@ -89,9 +103,8 @@ esp_err_t minuteman_init(minuteman_t* dev){
     sprintf(dev->digits, "00000000");
     /* TODO: Check for errors on mutex create */
     dev->mutex = xSemaphoreCreateMutex();
-    dev->alarms[0] = 0;
-    dev->alarms[1] = 0;
-    dev->selected_alarm_idx = 0;
+    init_alarm(&dev->alarms[0]);
+    init_alarm(&dev->alarms[1]);
     dev->display_on = true;
     return ESP_OK;
 }

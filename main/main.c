@@ -48,7 +48,6 @@ static void ticker(TimerHandle_t xTimer){
     struct tm timeinfo = { 0 };
     if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
         time(&minuteman_dev.current_time);
-        localtime_r(&minuteman_dev.current_time, &timeinfo);
         if(minuteman_dev.state == CLOCK_MODE){
             ESP_LOGI(__FUNCTION__, "Time updated");
             strftime(minuteman_dev.digits, sizeof(minuteman_dev.digits), "00%H%M%S", &timeinfo);
@@ -178,7 +177,7 @@ void encoder_handler(void *arg)
                 if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
                     minuteman_dev.display_on = true;
                     if(minuteman_dev.state == ALARM_EDIT){
-                        minuteman_dev.alarms[minuteman_dev.selected_alarm_idx] += (e.diff * ENCODER_INPUT_SEC_MULTIPLIER);
+                        minuteman_dev.alarms[minuteman_dev.selected_alarm_idx].timeval += (e.diff * ENCODER_INPUT_SEC_MULTIPLIER);
                         enter_edit_mode_timers();
                     }
                     xSemaphoreGive(minuteman_dev.mutex);

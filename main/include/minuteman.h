@@ -11,13 +11,20 @@ typedef enum{
 } minuteman_state_t;
 
 
+typedef struct{
+    bool enabled;
+    bool active;
+    bool snoozed;
+    time_t timeval;
+}minuteman_alarm_t;
+
 typedef struct {
     char digits[9];
     minuteman_state_t state;
     max7219_t* display;
     SemaphoreHandle_t mutex;
     time_t current_time;
-    time_t alarms[2];
+    minuteman_alarm_t alarms[2];
     int selected_alarm_idx;
     bool display_on;
     struct tm timeinfo;

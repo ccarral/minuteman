@@ -7,6 +7,8 @@
 
 #define CHECK(x) do { esp_err_t __; if ((__ = x) != ESP_OK) return __; } while (0)
 
+static QueueHandle_t alarm_event_queue;
+
 typedef enum{
     CLOCK_MODE,
     ALARM_EDIT
@@ -19,6 +21,14 @@ typedef struct{
     bool snoozed;
     time_t timeval;
 }minuteman_alarm_t;
+
+typedef enum minuteman_event{
+    MINUTEMAN_ALARM_ENABLED,
+    MINUTEMAN_ALARM_DISABLED,
+    MINUTEMAN_ALARM_ACTIVE,
+    MINUTEMAN_ALARM_EXPIRED,
+    MINUTEMAN_ALARM_SNOOZED,
+} minuteman_alarm_event_t;
 
 typedef struct {
     char digits[9];

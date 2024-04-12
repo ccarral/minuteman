@@ -116,19 +116,3 @@ esp_err_t minuteman_init(minuteman_t* dev){
     dev->display_on = true;
     return ESP_OK;
 }
-
-bool minuteman_check_active_alarm(minuteman_t* dev, int alarm_idx){
-    struct tm alarm_timeinfo = {0};
-    localtime_r(&dev->current_time, &dev->timeinfo);
-    localtime_r(&dev->alarms[alarm_idx].timeval, &alarm_timeinfo);
-    if( dev->alarms[alarm_idx].enabled 
-        && dev->timeinfo.tm_hour == alarm_timeinfo.tm_hour
-        && dev->timeinfo.tm_min == alarm_timeinfo.tm_min 
-        && dev->timeinfo.tm_sec == alarm_timeinfo.tm_sec
-    ){
-        dev->alarms[alarm_idx].active = true;
-        ESP_LOGI(__FUNCTION__, "alarm %d set to active", alarm_idx);
-        return true;
-    }
-    return false;
-}

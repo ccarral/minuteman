@@ -33,7 +33,7 @@
 
 #define EV_QUEUE_LEN CONFIG_RE_EV_QUEUE_LEN 
 
-static QueueHandle_t event_queue;
+static QueueHandle_t re_event_queue;
 static rotary_encoder_t encoder;
 static button_t button_alarm0;
 static button_t button_alarm1;
@@ -49,44 +49,69 @@ static minuteman_t minuteman_dev;
 static TaskHandle_t render_task = NULL;
 static TaskHandle_t alarm_handler_task;
 
+bool minuteman_check_active_alarm(minuteman_t* dev, int alarm_idx){
+    struct tm alarm_timeinfo = {0};
+    minuteman_alarm_event_t ev;
+    localtime_r(&dev->current_time, &dev->timeinfo);
+    localtime_r(&dev->alarms[alarm_idx].timeval, &alarm_timeinfo);
+    if( dev->alarms[alarm_idx].enabled 
+        && dev->timeinfo.tm_hour == alarm_timeinfo.tm_hour
+        && dev->timeinfo.tm_min == alarm_timeinfo.tm_min 
+        && dev->timeinfo.tm_sec == alarm_timeinfo.tm_sec
+    ){
+        ev = MINUTEMAN_ALARM_ACTIVE;
+        xQueueSendToBack(alarm_event_queue, &ev, 0);
+        return true;
+    }
+    return false;
+}
+
 static void ticker(TimerHandle_t xTimer){
     if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
         time(&minuteman_dev.current_time);
-        if(minuteman_check_active_alarm(&minuteman_dev, 0)){
-            xTaskNotifyGive(alarm_handler_task);
-        }
-        if(minuteman_check_active_alarm(&minuteman_dev, 1)){
-            xTaskNotifyGive(alarm_handler_task);
-        }
+        minuteman_check_active_alarm(&minuteman_dev, 0);
+        minuteman_check_active_alarm(&minuteman_dev, 1);
         xSemaphoreGive(minuteman_dev.mutex);
         xTaskNotifyGive(render_task);
     }
 }
 
 static void disable_alarm(TimerHandle_t xTimer){
-    if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
-        ESP_LOGI(__FUNCTION__, "alarm 0 set to inactive");
-        minuteman_dev.alarms[0].active = false;
-        xSemaphoreGive(minuteman_dev.mutex);
-        xTaskNotifyGive(alarm_handler_task);
-    }
+    minuteman_alarm_event_t ev;
+    ev = MINUTEMAN_ALARM_EXPIRED;
+    xQueueSendToBackFromISR(alarm_event_queue,&ev, NULL);
 }
 
 static void alarm_handler(void* arg){
+    // TODO: Refactor into event queue
+    minuteman_alarm_event_t e;
     while(1){
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        xQueueReceive(alarm_event_queue, &e, portMAX_DELAY);
         ESP_LOGI(__FUNCTION__, "alarm 0 handler awoken");
         if(xSemaphoreTake(minuteman_dev.mutex, portMAX_DELAY) == pdTRUE){
+            switch(e){
+                case MINUTEMAN_ALARM_ENABLED:
+                    minuteman_dev.alarms[0].enabled = true;
+                    ESP_LOGI(__FUNCTION__, "alarm 0 enabled");
+                    xTaskNotifyGive(render_task);
+                    break;
+                case MINUTEMAN_ALARM_ACTIVE:
+                    minuteman_dev.alarms[0].active = true;
+                    ESP_LOGI(__FUNCTION__, "alarm 0 active");
+                    xTimerReset(alarm_disable_timer, portMAX_DELAY);
+                    break;
+                case MINUTEMAN_ALARM_DISABLED:
+                    minuteman_dev.alarms[0].enabled=false;
+                    ESP_LOGI(__FUNCTION__, "alarm 0 disabled");
+                    xTaskNotifyGive(render_task);
+                case MINUTEMAN_ALARM_EXPIRED:
+                    minuteman_dev.alarms[0].active = false;
+                    ESP_LOGI(__FUNCTION__, "alarm 0 inactive");
+                    break;
+                case MINUTEMAN_ALARM_SNOOZED:
+                  break;
+            }
             // TODO: If snooze, create timer that will set alarm to active in SNOZE_TIME seconds
-            if(minuteman_dev.alarms[0].enabled && minuteman_dev.alarms[0].active){
-                // Sound alarm and start timer to disable it automatically after a while
-                ESP_LOGI(__FUNCTION__, "alarm 0 sounding!!");
-                xTimerReset(alarm_disable_timer, portMAX_DELAY);
-            }
-            else if(minuteman_dev.alarms[0].enabled && !minuteman_dev.alarms[0].active){
-                // Stop sounding alarm
-                ESP_LOGI(__FUNCTION__, "alarm 0 stopped sounding");
-            }
             xSemaphoreGive(minuteman_dev.mutex);
         }
     }
@@ -119,10 +144,10 @@ static void return_to_clock_mode(TimerHandle_t xTimer){
 
 void encoder_init(rotary_encoder_t* encoder){
     // Create event queue for rotary encoders
-    event_queue = xQueueCreate(EV_QUEUE_LEN, sizeof(rotary_encoder_event_t));
+    re_event_queue = xQueueCreate(EV_QUEUE_LEN, sizeof(rotary_encoder_event_t));
 
     // Setup rotary encoder library
-    ESP_ERROR_CHECK(rotary_encoder_init(event_queue));
+    ESP_ERROR_CHECK(rotary_encoder_init(re_event_queue));
 
     // Add one encoder
     memset(encoder, 0, sizeof(rotary_encoder_t));
@@ -179,7 +204,7 @@ void encoder_handler(void *arg)
 
     while (1)
     {
-        xQueueReceive(event_queue, &e, portMAX_DELAY);
+        xQueueReceive(re_event_queue, &e, portMAX_DELAY);
 
         switch (e.type)
         {
@@ -232,21 +257,14 @@ void encoder_handler(void *arg)
 
 static void on_button0_press(button_t *btn, button_state_t state)
 {
+    minuteman_alarm_event_t ev;
     if(state == BUTTON_PRESSED){
-        if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
-            minuteman_dev.alarms[0].enabled = true;
-            ESP_LOGI(__FUNCTION__, "alarm 0 enabled");
-            xSemaphoreGive(minuteman_dev.mutex);
-            xTaskNotifyGive(render_task);
-        }
+        ev = MINUTEMAN_ALARM_ENABLED;
+        xQueueSendToBack(alarm_event_queue, &ev, 0);
     }
     if(state == BUTTON_RELEASED){
-        if(xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
-            minuteman_dev.alarms[0].enabled = false;
-            ESP_LOGI(__FUNCTION__, "alarm 0 disabled");
-            xSemaphoreGive(minuteman_dev.mutex);
-            xTaskNotifyGive(render_task);
-        }
+        ev = MINUTEMAN_ALARM_DISABLED;
+        xQueueSendToBack(alarm_event_queue, &ev, 0);
     }
 }
 
@@ -270,6 +288,7 @@ static void on_button1_press(button_t *btn, button_state_t state)
     }
 }
 esp_err_t init_alarm_enable_buttons(){
+    alarm_event_queue = xQueueCreate(EV_QUEUE_LEN, sizeof(minuteman_alarm_event_t));
     /* TODO: Set GPIO ports in menuconfig */
     button_alarm0.gpio = GPIO_NUM_25;
     button_alarm0.pressed_level = 0;

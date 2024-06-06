@@ -7,6 +7,10 @@
 
 #define CHECK(x) do { esp_err_t __; if ((__ = x) != ESP_OK) return __; } while (0)
 
+#define ALARM_0 0
+#define ALARM_1 1
+#define ALARM_ANY 0xFFFFFFFF;
+
 static QueueHandle_t alarm_event_queue;
 
 typedef enum{
@@ -22,13 +26,18 @@ typedef struct{
     time_t timeval;
 }minuteman_alarm_t;
 
-typedef enum minuteman_event{
+enum minuteman_alarm_event_type{
     MINUTEMAN_ALARM_ENABLED,
     MINUTEMAN_ALARM_DISABLED,
     MINUTEMAN_ALARM_ACTIVE,
-    MINUTEMAN_ALARM_EXPIRED,
+    MINUTEMAN_ALARM_INACTIVE,
     MINUTEMAN_ALARM_SNOOZED,
-} minuteman_alarm_event_t;
+};
+
+typedef struct {
+    enum minuteman_alarm_event_type type;
+    size_t alarm_idx;
+}minuteman_alarm_event_t;
 
 typedef struct {
     char digits[9];

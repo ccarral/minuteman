@@ -58,6 +58,9 @@ esp_err_t minuteman_render_display(minuteman_t* dev){
         }
         CHECK(max7219_draw_text_7seg(dev->display, 2, dev->digits));
         /* Buttons mean different things depending on edit mode enabled or disabled */
+        // TODO: Refactor this code so the following happens:
+        // When on clock mode, the alarm light is on if the alarm is enabled.
+        // When on alarm edit mode, the alarm light is on if the current alarm is being edited.
         if(dev->alarms[0].enabled){
             CHECK(max7219_set_digit(dev->display, 0, 0b11111111));
         }else{

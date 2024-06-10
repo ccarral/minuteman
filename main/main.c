@@ -37,14 +37,16 @@ static QueueHandle_t re_event_queue;
 static rotary_encoder_t encoder;
 static button_t button_alarm0;
 static button_t button_alarm1;
+static button_t button_snooze;
 
 // TODO: Set in config
-#define ENCODER_INPUT_SEC_MULTIPLIER 300
+#define ENCODER_INPUT_SEC_MULTIPLIER 60 
 
 static TimerHandle_t ticker_timer;
 static TimerHandle_t return_to_clock_timer;
 static TimerHandle_t alarm_disable_timer;
 static TimerHandle_t toggle_display_timer;
+static TimerHandle_t reactivate_snoozed_alarms_timer;
 static minuteman_t minuteman_dev;
 static TaskHandle_t render_task = NULL;
 static TaskHandle_t alarm_handler_task;
@@ -81,7 +83,7 @@ static void disable_alarm(TimerHandle_t xTimer){
     minuteman_alarm_event_t ev;
     ev.type = MINUTEMAN_ALARM_DISABLED;
     ev.alarm_idx = ALARM_ANY;
-    xQueueSendToBackFromISR(alarm_event_queue,&ev, NULL);
+    ESP_LOGI(__FUNCTION__, "TODO: Disable alarms");
 }
 
 static void alarm_handler(void* arg){
@@ -89,29 +91,39 @@ static void alarm_handler(void* arg){
     minuteman_alarm_event_t e;
     while(1){
         xQueueReceive(alarm_event_queue, &e, portMAX_DELAY);
-        ESP_LOGI(__FUNCTION__, "alarm 0 handler awoken");
+        ESP_LOGI(__FUNCTION__, "alarm handler awoken");
         if(xSemaphoreTake(minuteman_dev.mutex, portMAX_DELAY) == pdTRUE){
             switch(e.type){
                 case MINUTEMAN_ALARM_ENABLED:
                     minuteman_dev.alarms[e.alarm_idx].enabled = true;
-                    ESP_LOGI(__FUNCTION__, "alarm 0 enabled");
+                    ESP_LOGI(__FUNCTION__, "alarm %zu enabled", e.alarm_idx);
                     xTaskNotifyGive(render_task);
                     break;
                 case MINUTEMAN_ALARM_ACTIVE:
                     minuteman_dev.alarms[e.alarm_idx].active = true;
-                    ESP_LOGI(__FUNCTION__, "alarm 0 active");
+                    ESP_LOGI(__FUNCTION__, "alarm %zu active", e.alarm_idx);
                     xTimerReset(alarm_disable_timer, portMAX_DELAY);
                     break;
                 case MINUTEMAN_ALARM_DISABLED:
                     minuteman_dev.alarms[e.alarm_idx].enabled=false;
-                    ESP_LOGI(__FUNCTION__, "alarm 0 disabled");
+                    ESP_LOGI(__FUNCTION__, "alarm %zu disabled", e.alarm_idx);
                     xTaskNotifyGive(render_task);
                 case MINUTEMAN_ALARM_INACTIVE:
                     minuteman_dev.alarms[e.alarm_idx].active = false;
-                    ESP_LOGI(__FUNCTION__, "alarm 0 inactive");
+                    ESP_LOGI(__FUNCTION__, "alarm %zu inactive", e.alarm_idx);
                     break;
                 case MINUTEMAN_ALARM_SNOOZED:
-                  break;
+                    for (size_t i = 0; i < 2; i++) {
+                        if(minuteman_dev.alarms[i].active){
+                            ESP_LOGI(__FUNCTION__, "alarm %zu snoozed", i);
+                            minuteman_dev.alarms[i].snoozed = true;
+                            minuteman_dev.alarms[i].active = false;
+                            // TODO: Create timer that will activate alarm again after SNOOZE_TIME_INTERVAL
+                            xTimerReset(reactivate_snoozed_alarms_timer, portMAX_DELAY);
+                            break;
+                        }
+                    }
+                    break;
             }
             // TODO: If snooze, create timer that will set alarm to active in SNOZE_TIME seconds
             xSemaphoreGive(minuteman_dev.mutex);
@@ -143,6 +155,23 @@ static void return_to_clock_mode(TimerHandle_t xTimer){
     xTaskNotifyGive(render_task);
 }
 
+static void reactivate_snoozed_alarms(TimerHandle_t xTimer){
+    minuteman_alarm_event_t ev;
+    if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE){
+        for (int i=0; i<2; i++) {
+            if(minuteman_dev.alarms[i].snoozed){
+                ESP_LOGI(__FUNCTION__, "reactivating alarm %d after snooze", i);
+                minuteman_dev.alarms[i].snoozed = false;
+                minuteman_dev.alarms[i].active = true;
+                ev.alarm_idx = i;
+                ev.type = MINUTEMAN_ALARM_ACTIVE;
+                xQueueSendToBack(alarm_event_queue, &ev, 0);
+                break;
+            }
+        }
+        xSemaphoreGive(minuteman_dev.mutex);
+    }
+}
 
 void encoder_init(rotary_encoder_t* encoder){
     // Create event queue for rotary encoders
@@ -285,7 +314,13 @@ static void on_button1_press(button_t *btn, button_state_t state)
     }
 }
 
-esp_err_t init_alarm_enable_buttons(){
+static void on_button_snooze_press(button_t *btn, button_state_t state){
+    minuteman_alarm_event_t ev = {.type = MINUTEMAN_ALARM_SNOOZED, .alarm_idx = ALARM_ANY};
+    if(state == BUTTON_PRESSED){
+        xQueueSendToBack(alarm_event_queue, &ev, 0);
+    }
+}
+esp_err_t init_alarm_buttons(){
     alarm_event_queue = xQueueCreate(EV_QUEUE_LEN, sizeof(minuteman_alarm_event_t));
     /* TODO: Set GPIO ports in menuconfig */
     button_alarm0.gpio = GPIO_NUM_25;
@@ -301,6 +336,14 @@ esp_err_t init_alarm_enable_buttons(){
     button_alarm1.autorepeat = false;
     button_alarm1.callback = on_button1_press;
     CHECK(button_init(&button_alarm1));
+
+    button_snooze.gpio = GPIO_NUM_27;
+    button_snooze.pressed_level = 0;
+    button_snooze.internal_pull = true;
+    button_snooze.autorepeat = false;
+    button_snooze.callback = on_button_snooze_press;
+    CHECK(button_init(&button_snooze));
+
     return ESP_OK;
 }
 
@@ -311,14 +354,18 @@ void app_main(void)
     initialize_sntp();
     encoder_init(&encoder);
     minuteman_init(&minuteman_dev);
-    init_alarm_enable_buttons();
+    init_alarm_buttons();
+
     ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, ticker);
     // TODO: Make flash interval and return to clock mode timeout compile time configs
     return_to_clock_timer = xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000), pdFALSE, NULL, return_to_clock_mode);
     toggle_display_timer = xTimerCreate("toggle disple on/off", pdMS_TO_TICKS(500), pdTRUE, NULL, toggle_display);
+    // TODO: Make snooze timeout a config value
+    reactivate_snoozed_alarms_timer = xTimerCreate("reactivate snoozed alarms", pdMS_TO_TICKS(15000), pdFALSE, NULL, reactivate_snoozed_alarms);
     /* TODO: Make alarm automatic disable timeout a config value */
-    alarm_disable_timer = xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(10000), pdFALSE, NULL, disable_alarm);
+    alarm_disable_timer = xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(1000*60*20), pdFALSE, NULL, disable_alarm);
     xTimerStart(ticker_timer, portMAX_DELAY);
+
     xTaskCreatePinnedToCore(&alarm_handler, "alarm task", configMINIMAL_STACK_SIZE * 8, NULL, 5, &alarm_handler_task, 0);
     xTaskCreatePinnedToCore(&encoder_handler, "encoder task", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL,0);
     xTaskCreatePinnedToCore(&render_handler, "render task", configMINIMAL_STACK_SIZE * 8, NULL, 5, &render_task, 0);

@@ -9,7 +9,7 @@
 
 #define ALARM_0 0
 #define ALARM_1 1
-#define ALARM_ANY 0xFFFFFFFF;
+#define ALARM_ANY 0xFFFFFFFF
 
 static QueueHandle_t alarm_event_queue;
 

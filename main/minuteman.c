@@ -94,7 +94,7 @@ esp_err_t display_init(max7219_t *display){
     CHECK(max7219_init_desc(display, HOST, MAX7219_MAX_CLOCK_SPEED_HZ, PIN_NUM_CS));
     CHECK(max7219_init(display));
     max7219_set_brightness(display, MAX7219_MAX_BRIGHTNESS/2);
-    CHECK(max7219_draw_text_7seg(display, 2, "000000"));
+    CHECK(max7219_draw_text_7seg(display, 2, "888888"));
     return ESP_OK;
 }
 

@@ -39,9 +39,6 @@ static char buf[6];
 
 #define TIME_FMT "%H%M%S"
 
-// TODO: Set in config
-#define ENCODER_INPUT_SEC_MULTIPLIER 60
-
 esp_err_t minuteman_render_display(minuteman_t *dev) {
   if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
     CHECK(max7219_clear(dev->display));
@@ -147,4 +144,22 @@ esp_err_t minuteman_init(minuteman_t *dev) {
   init_alarm(&dev->alarms[1]);
   dev->display_on = true;
   return ESP_OK;
+}
+
+bool minuteman_alarm_check_active(minuteman_t *dev, int alarm_idx,
+                                  QueueHandle_t evt_queue) {
+  struct tm alarm_timeinfo = {0};
+  minuteman_alarm_event_t ev;
+  ev.alarm_idx = alarm_idx;
+  localtime_r(&dev->current_time, &dev->timeinfo);
+  localtime_r(&dev->alarms[alarm_idx].timeval, &alarm_timeinfo);
+  if (dev->alarms[alarm_idx].enabled &&
+      dev->timeinfo.tm_hour == alarm_timeinfo.tm_hour &&
+      dev->timeinfo.tm_min == alarm_timeinfo.tm_min &&
+      dev->timeinfo.tm_sec == alarm_timeinfo.tm_sec) {
+    ev.type = MINUTEMAN_ALARM_ACTIVE;
+    xQueueSendToBack(evt_queue, &ev, 0);
+    return true;
+  }
+  return false;
 }

@@ -19,6 +19,7 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 #include "wifi.h"
+#include <alarm.h>
 #include <button.h>
 #include <encoder.h>
 #include <minuteman.h>
@@ -35,6 +36,7 @@
 #define EV_QUEUE_LEN CONFIG_RE_EV_QUEUE_LEN
 
 static QueueHandle_t re_event_queue;
+static QueueHandle_t alarm_event_queue;
 static rotary_encoder_t encoder;
 static button_t button_alarm0;
 static button_t button_alarm1;
@@ -50,28 +52,11 @@ static TaskHandle_t render_task = NULL;
 static TaskHandle_t alarm_handler_task;
 static nvs_handle_t alarm_storage_handle;
 
-bool minuteman_check_active_alarm(minuteman_t *dev, int alarm_idx) {
-  struct tm alarm_timeinfo = {0};
-  minuteman_alarm_event_t ev;
-  ev.alarm_idx = alarm_idx;
-  localtime_r(&dev->current_time, &dev->timeinfo);
-  localtime_r(&dev->alarms[alarm_idx].timeval, &alarm_timeinfo);
-  if (dev->alarms[alarm_idx].enabled &&
-      dev->timeinfo.tm_hour == alarm_timeinfo.tm_hour &&
-      dev->timeinfo.tm_min == alarm_timeinfo.tm_min &&
-      dev->timeinfo.tm_sec == alarm_timeinfo.tm_sec) {
-    ev.type = MINUTEMAN_ALARM_ACTIVE;
-    xQueueSendToBack(alarm_event_queue, &ev, 0);
-    return true;
-  }
-  return false;
-}
-
 static void ticker(TimerHandle_t xTimer) {
   if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
     time(&minuteman_dev.current_time);
-    minuteman_check_active_alarm(&minuteman_dev, ALARM_0);
-    minuteman_check_active_alarm(&minuteman_dev, ALARM_1);
+    minuteman_alarm_check_active(&minuteman_dev, ALARM_0, alarm_event_queue);
+    minuteman_alarm_check_active(&minuteman_dev, ALARM_1, alarm_event_queue);
     xSemaphoreGive(minuteman_dev.mutex);
     xTaskNotifyGive(render_task);
   }

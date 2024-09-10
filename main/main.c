@@ -40,7 +40,6 @@ static TimerHandle_t alarm_disable_timer;
 static TimerHandle_t toggle_display_timer;
 static TimerHandle_t reactivate_snoozed_alarms_timer;
 static minuteman_t minuteman_dev;
-static TaskHandle_t render_task = NULL;
 static TaskHandle_t alarm_handler_task;
 static nvs_handle_t alarm_storage_handle;
 
@@ -51,7 +50,7 @@ static void ticker(TimerHandle_t xTimer) {
     minuteman_alarm_check_active(dev, ALARM_0);
     minuteman_alarm_check_active(dev, ALARM_1);
     xSemaphoreGive(dev->mutex);
-    xTaskNotifyGive(render_task);
+    xTaskNotifyGive(dev->render_task_handle);
   }
 }
 
@@ -72,7 +71,7 @@ static void alarm_handler(void *arg) {
       switch (e.type) {
       case MINUTEMAN_ALARM_ENABLED:
         minuteman_locked_set_enabled_alarm(dev, e.alarm_idx, true);
-        xTaskNotifyGive(render_task);
+        xTaskNotifyGive(dev->render_task_handle);
         break;
       case MINUTEMAN_ALARM_ACTIVE:
         minuteman_locked_set_active_alarm(dev, e.alarm_idx, true);
@@ -80,7 +79,7 @@ static void alarm_handler(void *arg) {
         break;
       case MINUTEMAN_ALARM_DISABLED:
         minuteman_locked_set_enabled_alarm(dev, e.alarm_idx, false);
-        xTaskNotifyGive(render_task);
+        xTaskNotifyGive(dev->render_task_handle);
       case MINUTEMAN_ALARM_INACTIVE:
         minuteman_locked_set_active_alarm(dev, e.alarm_idx, false);
         break;
@@ -121,7 +120,7 @@ static void return_to_clock_mode(TimerHandle_t xTimer) {
   }
   xTimerStop(toggle_display_timer, portMAX_DELAY);
   xTimerReset(ticker_timer, portMAX_DELAY);
-  xTaskNotifyGive(render_task);
+  xTaskNotifyGive(minuteman_dev.render_task_handle);
 }
 
 static void reactivate_snoozed_alarms(TimerHandle_t xTimer) {
@@ -148,7 +147,7 @@ static void toggle_display(TimerHandle_t xTimer) {
     ESP_LOGI(__FUNCTION__, "display on: %d", minuteman_dev.display_on);
     xSemaphoreGive(minuteman_dev.mutex);
   }
-  xTaskNotifyGive(render_task);
+  xTaskNotifyGive(minuteman_dev.render_task_handle);
 }
 
 void set_timezone() {
@@ -205,7 +204,7 @@ void encoder_handler(void *arg) {
         }
         xSemaphoreGive(dev->mutex);
         ESP_LOGI(__FUNCTION__, "render called from RE button press");
-        xTaskNotifyGive(render_task);
+        xTaskNotifyGive(dev->render_task_handle);
       }
       break;
     case RE_ET_CHANGED:
@@ -218,7 +217,7 @@ void encoder_handler(void *arg) {
           enter_edit_mode_timers();
         }
         xSemaphoreGive(dev->mutex);
-        xTaskNotifyGive(render_task);
+        xTaskNotifyGive(dev->render_task_handle);
       }
       break;
     case RE_ET_BTN_RELEASED:
@@ -326,7 +325,7 @@ void app_main(void) {
                           5, NULL, 0);
   xTaskCreatePinnedToCore(&render_handler, "render task",
                           configMINIMAL_STACK_SIZE * 8, (void *)&minuteman_dev,
-                          5, &render_task, 0);
+                          5, &minuteman_dev.render_task_handle, 0);
   for (;;)
     ;
 }

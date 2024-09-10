@@ -45,11 +45,12 @@ static TaskHandle_t alarm_handler_task;
 static nvs_handle_t alarm_storage_handle;
 
 static void ticker(TimerHandle_t xTimer) {
-  if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
-    time(&minuteman_dev.current_time);
-    minuteman_alarm_check_active(&minuteman_dev, ALARM_0);
-    minuteman_alarm_check_active(&minuteman_dev, ALARM_1);
-    xSemaphoreGive(minuteman_dev.mutex);
+  minuteman_t *dev = (minuteman_t *)pvTimerGetTimerID(xTimer);
+  if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
+    time(&dev->current_time);
+    minuteman_alarm_check_active(dev, ALARM_0);
+    minuteman_alarm_check_active(dev, ALARM_1);
+    xSemaphoreGive(dev->mutex);
     xTaskNotifyGive(render_task);
   }
 }
@@ -298,8 +299,8 @@ void app_main(void) {
   nvs_restore_stored_alarms(alarm_storage_handle, &minuteman_dev);
   init_alarm_buttons();
 
-  ticker_timer =
-      xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE, NULL, ticker);
+  ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE,
+                              (void *)&minuteman_dev, ticker);
   // TODO: Make flash interval and return to clock mode timeout compile time
   // configs
   return_to_clock_timer =

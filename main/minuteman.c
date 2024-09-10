@@ -18,6 +18,7 @@
 #include "lwip/err.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
+#include "soc/gpio_num.h"
 #include "wifi.h"
 #include <encoder.h>
 #include <max7219.h>
@@ -152,7 +153,7 @@ esp_err_t encoder_init(minuteman_t *dev) {
   dev->encoder.pin_b = RE_B_GPIO;
   dev->encoder.pin_btn = RE_BTN_GPIO;
   CHECK(rotary_encoder_add(&dev->encoder));
-  return ERR_OK;
+  return ESP_OK;
 }
 
 esp_err_t minuteman_init(minuteman_t *dev) {
@@ -166,11 +167,12 @@ esp_err_t minuteman_init(minuteman_t *dev) {
   init_alarm(&dev->alarms[1]);
   dev->display_on = true;
   encoder_init(dev);
+  dev->alarm_evt_queue =
+      xQueueCreate(EV_QUEUE_LEN, sizeof(minuteman_alarm_event_t));
   return ESP_OK;
 }
 
-bool minuteman_alarm_check_active(minuteman_t *dev, int alarm_idx,
-                                  QueueHandle_t evt_queue) {
+bool minuteman_alarm_check_active(minuteman_t *dev, int alarm_idx) {
   struct tm alarm_timeinfo = {0};
   minuteman_alarm_event_t ev;
   ev.alarm_idx = alarm_idx;
@@ -181,7 +183,7 @@ bool minuteman_alarm_check_active(minuteman_t *dev, int alarm_idx,
       dev->timeinfo.tm_min == alarm_timeinfo.tm_min &&
       dev->timeinfo.tm_sec == alarm_timeinfo.tm_sec) {
     ev.type = MINUTEMAN_ALARM_ACTIVE;
-    xQueueSendToBack(evt_queue, &ev, 0);
+    xQueueSendToBack(dev->alarm_evt_queue, &ev, 0);
     return true;
   }
   return false;

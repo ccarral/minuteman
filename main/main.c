@@ -30,9 +30,6 @@
 #include <sys/time.h>
 #include <time.h>
 
-#define EV_QUEUE_LEN CONFIG_RE_EV_QUEUE_LEN
-
-static QueueHandle_t alarm_event_queue;
 static button_t button_alarm0;
 static button_t button_alarm1;
 static button_t button_snooze;
@@ -50,8 +47,8 @@ static nvs_handle_t alarm_storage_handle;
 static void ticker(TimerHandle_t xTimer) {
   if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
     time(&minuteman_dev.current_time);
-    minuteman_alarm_check_active(&minuteman_dev, ALARM_0, alarm_event_queue);
-    minuteman_alarm_check_active(&minuteman_dev, ALARM_1, alarm_event_queue);
+    minuteman_alarm_check_active(&minuteman_dev, ALARM_0);
+    minuteman_alarm_check_active(&minuteman_dev, ALARM_1);
     xSemaphoreGive(minuteman_dev.mutex);
     xTaskNotifyGive(render_task);
   }
@@ -68,7 +65,7 @@ static void alarm_handler(void *arg) {
   minuteman_t *dev = (minuteman_t *)arg;
   minuteman_alarm_event_t e;
   while (1) {
-    xQueueReceive(alarm_event_queue, &e, portMAX_DELAY);
+    xQueueReceive(dev->alarm_evt_queue, &e, portMAX_DELAY);
     ESP_LOGI(__FUNCTION__, "alarm handler awoken");
     if (xSemaphoreTake(dev->mutex, portMAX_DELAY) == pdTRUE) {
       switch (e.type) {
@@ -136,7 +133,7 @@ static void reactivate_snoozed_alarms(TimerHandle_t xTimer) {
         minuteman_dev.alarms[i].active = true;
         ev.alarm_idx = i;
         ev.type = MINUTEMAN_ALARM_ACTIVE;
-        xQueueSendToBack(alarm_event_queue, &ev, 0);
+        xQueueSendToBack(minuteman_dev.alarm_evt_queue, &ev, 0);
         break;
       }
     }
@@ -237,11 +234,11 @@ static void on_button0_press(button_t *btn, button_state_t state) {
   ev.alarm_idx = 0;
   if (state == BUTTON_PRESSED_LONG) {
     ev.type = MINUTEMAN_ALARM_ENABLED;
-    xQueueSendToBack(alarm_event_queue, &ev, 0);
+    xQueueSendToBack(minuteman_dev.alarm_evt_queue, &ev, 0);
   }
   if (state == BUTTON_RELEASED) {
     ev.type = MINUTEMAN_ALARM_DISABLED;
-    xQueueSendToBack(alarm_event_queue, &ev, 0);
+    xQueueSendToBack(minuteman_dev.alarm_evt_queue, &ev, 0);
   }
 }
 
@@ -250,11 +247,11 @@ static void on_button1_press(button_t *btn, button_state_t state) {
   ev.alarm_idx = 1;
   if (state == BUTTON_PRESSED_LONG) {
     ev.type = MINUTEMAN_ALARM_ENABLED;
-    xQueueSendToBack(alarm_event_queue, &ev, 0);
+    xQueueSendToBack(minuteman_dev.alarm_evt_queue, &ev, 0);
   }
   if (state == BUTTON_RELEASED) {
     ev.type = MINUTEMAN_ALARM_DISABLED;
-    xQueueSendToBack(alarm_event_queue, &ev, 0);
+    xQueueSendToBack(minuteman_dev.alarm_evt_queue, &ev, 0);
   }
 }
 
@@ -262,12 +259,10 @@ static void on_button_snooze_press(button_t *btn, button_state_t state) {
   minuteman_alarm_event_t ev = {.type = MINUTEMAN_ALARM_SNOOZED,
                                 .alarm_idx = ALARM_ANY};
   if (state == BUTTON_PRESSED) {
-    xQueueSendToBack(alarm_event_queue, &ev, 0);
+    xQueueSendToBack(minuteman_dev.alarm_evt_queue, &ev, 0);
   }
 }
 esp_err_t init_alarm_buttons() {
-  alarm_event_queue =
-      xQueueCreate(EV_QUEUE_LEN, sizeof(minuteman_alarm_event_t));
   /* TODO: Set GPIO ports in menuconfig */
   button_alarm0.gpio = GPIO_NUM_25;
   button_alarm0.pressed_level = 0;

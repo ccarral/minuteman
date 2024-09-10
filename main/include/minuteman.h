@@ -57,6 +57,7 @@ typedef struct {
   int selected_alarm_idx;
   bool display_on;
   struct tm timeinfo;
+  QueueHandle_t alarm_evt_queue;
   QueueHandle_t re_evt_queue;
   rotary_encoder_t encoder;
 } minuteman_t;
@@ -73,7 +74,6 @@ void minuteman_locked_set_active_alarm(minuteman_t *dev, size_t alarm_idx,
                                        bool active);
 void minuteman_locked_set_snoozed_alarm(minuteman_t *dev, size_t alarm_idx);
 
-bool minuteman_alarm_check_active(minuteman_t *dev, int alarm_idx,
-                                  QueueHandle_t evt_queue);
+bool minuteman_alarm_check_active(minuteman_t *dev, int alarm_idx);
 
 #endif /* ifndef  MINUTEMAN_H */

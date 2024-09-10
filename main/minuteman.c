@@ -82,9 +82,27 @@ esp_err_t minuteman_render_display(minuteman_t *dev) {
   return ESP_OK;
 }
 
-void locked_minuteman_inc_selected_alarm(minuteman_t *dev, int32_t diff) {
+void minuteman_locked_inc_selected_alarm(minuteman_t *dev, int32_t diff) {
   dev->alarms[dev->selected_alarm_idx].timeval +=
       (diff * ENCODER_INPUT_SEC_MULTIPLIER);
+}
+
+void minuteman_locked_set_enabled_alarm(minuteman_t *dev, size_t alarm_idx,
+                                        bool enabled) {
+  dev->alarms[alarm_idx].enabled = enabled;
+  ESP_LOGI(__FUNCTION__, "alarm %zu enabled", alarm_idx);
+}
+
+void minuteman_locked_set_active_alarm(minuteman_t *dev, size_t alarm_idx,
+                                       bool active) {
+  dev->alarms[alarm_idx].active = active;
+  ESP_LOGI(__FUNCTION__, "alarm %zu active", alarm_idx);
+}
+
+void minuteman_locked_set_snoozed_alarm(minuteman_t *dev, size_t alarm_idx) {
+  ESP_LOGI(__FUNCTION__, "alarm %zu snoozed", alarm_idx);
+  dev->alarms[alarm_idx].snoozed = true;
+  dev->alarms[alarm_idx].active = false;
 }
 
 esp_err_t display_init(max7219_t *display) {

@@ -91,31 +91,23 @@ static void alarm_handler(void *arg) {
     if (xSemaphoreTake(minuteman_dev.mutex, portMAX_DELAY) == pdTRUE) {
       switch (e.type) {
       case MINUTEMAN_ALARM_ENABLED:
-        minuteman_dev.alarms[e.alarm_idx].enabled = true;
-        ESP_LOGI(__FUNCTION__, "alarm %zu enabled", e.alarm_idx);
+        minuteman_locked_set_enabled_alarm(&minuteman_dev, e.alarm_idx, true);
         xTaskNotifyGive(render_task);
         break;
       case MINUTEMAN_ALARM_ACTIVE:
-        minuteman_dev.alarms[e.alarm_idx].active = true;
-        ESP_LOGI(__FUNCTION__, "alarm %zu active", e.alarm_idx);
+        minuteman_locked_set_active_alarm(&minuteman_dev, e.alarm_idx, true);
         xTimerReset(alarm_disable_timer, portMAX_DELAY);
         break;
       case MINUTEMAN_ALARM_DISABLED:
-        minuteman_dev.alarms[e.alarm_idx].enabled = false;
-        ESP_LOGI(__FUNCTION__, "alarm %zu disabled", e.alarm_idx);
+        minuteman_locked_set_enabled_alarm(&minuteman_dev, e.alarm_idx, false);
         xTaskNotifyGive(render_task);
       case MINUTEMAN_ALARM_INACTIVE:
-        minuteman_dev.alarms[e.alarm_idx].active = false;
-        ESP_LOGI(__FUNCTION__, "alarm %zu inactive", e.alarm_idx);
+        minuteman_locked_set_active_alarm(&minuteman_dev, e.alarm_idx, false);
         break;
       case MINUTEMAN_ALARM_SNOOZED:
         for (size_t i = 0; i < 2; i++) {
           if (minuteman_dev.alarms[i].active) {
-            ESP_LOGI(__FUNCTION__, "alarm %zu snoozed", i);
-            minuteman_dev.alarms[i].snoozed = true;
-            minuteman_dev.alarms[i].active = false;
-            // TODO: Create timer that will activate alarm again after
-            // SNOOZE_TIME_INTERVAL
+            minuteman_locked_set_snoozed_alarm(&minuteman_dev, i);
             xTimerReset(reactivate_snoozed_alarms_timer, portMAX_DELAY);
             break;
           }
@@ -262,8 +254,7 @@ void encoder_handler(void *arg) {
       if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
         minuteman_dev.display_on = true;
         if (minuteman_dev.state == ALARM_EDIT) {
-          minuteman_dev.alarms[minuteman_dev.selected_alarm_idx].timeval +=
-              (e.diff * ENCODER_INPUT_SEC_MULTIPLIER);
+          minuteman_locked_inc_selected_alarm(&minuteman_dev, e.diff);
           nvs_set_u32(
               alarm_storage_handle, "alarm1",
               (long int)minuteman_dev.alarms[minuteman_dev.selected_alarm_idx]

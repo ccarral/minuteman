@@ -2,7 +2,9 @@
 
 #define MINUTEMAN_H
 
+#include "encoder.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
 #include <alarm.h>
@@ -55,6 +57,8 @@ typedef struct {
   int selected_alarm_idx;
   bool display_on;
   struct tm timeinfo;
+  QueueHandle_t re_evt_queue;
+  rotary_encoder_t encoder;
 } minuteman_t;
 
 esp_err_t minuteman_render_display(minuteman_t *dev);

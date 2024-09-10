@@ -15,6 +15,7 @@
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
+#include "lwip/err.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 #include "wifi.h"
@@ -35,9 +36,14 @@
 #endif
 
 #define PIN_NUM_CS CONFIG_PIN_NUM_CS
-static char buf[6];
+
+#define EV_QUEUE_LEN CONFIG_RE_EV_QUEUE_LEN
 
 #define TIME_FMT "%H%M%S"
+
+#define RE_A_GPIO CONFIG_PIN_ROT_ENCODER_A
+#define RE_B_GPIO CONFIG_PIN_ROT_ENCODER_B
+#define RE_BTN_GPIO CONFIG_PIN_ROT_ENCODER_BUTTON
 
 esp_err_t minuteman_render_display(minuteman_t *dev) {
   if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
@@ -133,6 +139,22 @@ void init_alarm(minuteman_alarm_t *alarm) {
   alarm->timeval = 0;
 }
 
+esp_err_t encoder_init(minuteman_t *dev) {
+  // Create event queue for rotary encoders
+  dev->re_evt_queue =
+      xQueueCreate(EV_QUEUE_LEN, sizeof(rotary_encoder_event_t));
+  // Setup rotary encoder library
+  CHECK(rotary_encoder_init(dev->re_evt_queue));
+
+  // Add one encoder
+  memset(&dev->encoder, 0, sizeof(rotary_encoder_t));
+  dev->encoder.pin_a = RE_A_GPIO;
+  dev->encoder.pin_b = RE_B_GPIO;
+  dev->encoder.pin_btn = RE_BTN_GPIO;
+  CHECK(rotary_encoder_add(&dev->encoder));
+  return ERR_OK;
+}
+
 esp_err_t minuteman_init(minuteman_t *dev) {
   dev->display = (max7219_t *)malloc(sizeof(max7219_t));
   CHECK(display_init(dev->display));
@@ -143,6 +165,7 @@ esp_err_t minuteman_init(minuteman_t *dev) {
   init_alarm(&dev->alarms[0]);
   init_alarm(&dev->alarms[1]);
   dev->display_on = true;
+  encoder_init(dev);
   return ESP_OK;
 }
 

@@ -30,15 +30,9 @@
 #include <sys/time.h>
 #include <time.h>
 
-#define RE_A_GPIO CONFIG_PIN_ROT_ENCODER_A
-#define RE_B_GPIO CONFIG_PIN_ROT_ENCODER_B
-#define RE_BTN_GPIO CONFIG_PIN_ROT_ENCODER_BUTTON
-
 #define EV_QUEUE_LEN CONFIG_RE_EV_QUEUE_LEN
 
-static QueueHandle_t re_event_queue;
 static QueueHandle_t alarm_event_queue;
-static rotary_encoder_t encoder;
 static button_t button_alarm0;
 static button_t button_alarm1;
 static button_t button_snooze;
@@ -70,7 +64,7 @@ static void disable_alarm(TimerHandle_t xTimer) {
   ESP_LOGI(__FUNCTION__, "TODO: Disable alarms");
 }
 
-void alarm_handler(void *arg) {
+static void alarm_handler(void *arg) {
   minuteman_t *dev = (minuteman_t *)arg;
   minuteman_alarm_event_t e;
   while (1) {
@@ -150,21 +144,6 @@ static void reactivate_snoozed_alarms(TimerHandle_t xTimer) {
   }
 }
 
-void encoder_init(rotary_encoder_t *encoder) {
-  // Create event queue for rotary encoders
-  re_event_queue = xQueueCreate(EV_QUEUE_LEN, sizeof(rotary_encoder_event_t));
-
-  // Setup rotary encoder library
-  ESP_ERROR_CHECK(rotary_encoder_init(re_event_queue));
-
-  // Add one encoder
-  memset(encoder, 0, sizeof(rotary_encoder_t));
-  encoder->pin_a = RE_A_GPIO;
-  encoder->pin_b = RE_B_GPIO;
-  encoder->pin_btn = RE_BTN_GPIO;
-  ESP_ERROR_CHECK(rotary_encoder_add(encoder));
-}
-
 static void toggle_display(TimerHandle_t xTimer) {
   if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
     minuteman_dev.display_on = !(minuteman_dev.display_on);
@@ -201,7 +180,7 @@ void encoder_handler(void *arg) {
   rotary_encoder_event_t e;
 
   while (1) {
-    xQueueReceive(re_event_queue, &e, portMAX_DELAY);
+    xQueueReceive(dev->re_evt_queue, &e, portMAX_DELAY);
 
     switch (e.type) {
     case RE_ET_BTN_PRESSED:
@@ -320,7 +299,6 @@ void app_main(void) {
   ESP_ERROR_CHECK(
       nvs_open("alarm_storage", NVS_READWRITE, &alarm_storage_handle));
   initialize_sntp();
-  encoder_init(&encoder);
   minuteman_init(&minuteman_dev);
   nvs_restore_stored_alarms(alarm_storage_handle, &minuteman_dev);
   init_alarm_buttons();

@@ -22,6 +22,7 @@
 #include <alarm.h>
 #include <button.h>
 #include <encoder.h>
+#include <handlers.h>
 #include <minuteman.h>
 #include <persistence.h>
 #include <stdint.h>
@@ -69,32 +70,32 @@ static void disable_alarm(TimerHandle_t xTimer) {
   ESP_LOGI(__FUNCTION__, "TODO: Disable alarms");
 }
 
-static void alarm_handler(void *arg) {
-  // TODO: Refactor into event queue
+void alarm_handler(void *arg) {
+  minuteman_t *dev = (minuteman_t *)arg;
   minuteman_alarm_event_t e;
   while (1) {
     xQueueReceive(alarm_event_queue, &e, portMAX_DELAY);
     ESP_LOGI(__FUNCTION__, "alarm handler awoken");
-    if (xSemaphoreTake(minuteman_dev.mutex, portMAX_DELAY) == pdTRUE) {
+    if (xSemaphoreTake(dev->mutex, portMAX_DELAY) == pdTRUE) {
       switch (e.type) {
       case MINUTEMAN_ALARM_ENABLED:
-        minuteman_locked_set_enabled_alarm(&minuteman_dev, e.alarm_idx, true);
+        minuteman_locked_set_enabled_alarm(dev, e.alarm_idx, true);
         xTaskNotifyGive(render_task);
         break;
       case MINUTEMAN_ALARM_ACTIVE:
-        minuteman_locked_set_active_alarm(&minuteman_dev, e.alarm_idx, true);
+        minuteman_locked_set_active_alarm(dev, e.alarm_idx, true);
         xTimerReset(alarm_disable_timer, portMAX_DELAY);
         break;
       case MINUTEMAN_ALARM_DISABLED:
-        minuteman_locked_set_enabled_alarm(&minuteman_dev, e.alarm_idx, false);
+        minuteman_locked_set_enabled_alarm(dev, e.alarm_idx, false);
         xTaskNotifyGive(render_task);
       case MINUTEMAN_ALARM_INACTIVE:
-        minuteman_locked_set_active_alarm(&minuteman_dev, e.alarm_idx, false);
+        minuteman_locked_set_active_alarm(dev, e.alarm_idx, false);
         break;
       case MINUTEMAN_ALARM_SNOOZED:
         for (size_t i = 0; i < 2; i++) {
-          if (minuteman_dev.alarms[i].active) {
-            minuteman_locked_set_snoozed_alarm(&minuteman_dev, i);
+          if (dev->alarms[i].active) {
+            minuteman_locked_set_snoozed_alarm(dev, i);
             xTimerReset(reactivate_snoozed_alarms_timer, portMAX_DELAY);
             break;
           }
@@ -103,7 +104,7 @@ static void alarm_handler(void *arg) {
       }
       // TODO: If snooze, create timer that will set alarm to active in
       // SNOZE_TIME seconds
-      xSemaphoreGive(minuteman_dev.mutex);
+      xSemaphoreGive(dev->mutex);
     }
   }
 }
@@ -192,16 +193,9 @@ static void initialize_sntp(void) {
   esp_sntp_init();
 }
 
-static void render_handler(void *arg) {
-  ESP_LOGI(__FUNCTION__, "render task started");
-  while (1) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    ESP_ERROR_CHECK(minuteman_render_display(&minuteman_dev));
-  }
-}
-
-// TODO: Send device via arg*
 void encoder_handler(void *arg) {
+
+  minuteman_t *dev = (minuteman_t *)arg;
 
   ESP_LOGI(__FUNCTION__, "encoder task started");
   rotary_encoder_event_t e;
@@ -211,42 +205,42 @@ void encoder_handler(void *arg) {
 
     switch (e.type) {
     case RE_ET_BTN_PRESSED:
-      if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
-        minuteman_dev.display_on = true;
-        switch (minuteman_dev.state) {
+      if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
+        dev->display_on = true;
+        switch (dev->state) {
         case CLOCK_MODE:
-          minuteman_dev.state = ALARM_EDIT;
-          minuteman_dev.selected_alarm_idx = 0;
+          dev->state = ALARM_EDIT;
+          dev->selected_alarm_idx = 0;
           enter_edit_mode_timers();
           break;
         case ALARM_EDIT:
-          if (minuteman_dev.selected_alarm_idx == 1) {
-            minuteman_dev.state = CLOCK_MODE;
-            minuteman_dev.display_on = true;
+          if (dev->selected_alarm_idx == 1) {
+            dev->state = CLOCK_MODE;
+            dev->display_on = true;
             leave_edit_mode_timers();
           } else {
-            minuteman_dev.selected_alarm_idx += 1;
-            minuteman_dev.state = ALARM_EDIT;
-            minuteman_dev.display_on = true;
+            dev->selected_alarm_idx += 1;
+            dev->state = ALARM_EDIT;
+            dev->display_on = true;
             enter_edit_mode_timers();
           }
           break;
         }
-        xSemaphoreGive(minuteman_dev.mutex);
+        xSemaphoreGive(dev->mutex);
         ESP_LOGI(__FUNCTION__, "render called from RE button press");
         xTaskNotifyGive(render_task);
       }
       break;
     case RE_ET_CHANGED:
-      if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
-        minuteman_dev.display_on = true;
-        if (minuteman_dev.state == ALARM_EDIT) {
-          minuteman_locked_inc_selected_alarm(&minuteman_dev, e.diff);
+      if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
+        dev->display_on = true;
+        if (dev->state == ALARM_EDIT) {
+          minuteman_locked_inc_selected_alarm(dev, e.diff);
           ESP_ERROR_CHECK(
-              nvs_persist_selected_alarm(alarm_storage_handle, &minuteman_dev));
+              nvs_persist_selected_alarm(alarm_storage_handle, dev));
           enter_edit_mode_timers();
         }
-        xSemaphoreGive(minuteman_dev.mutex);
+        xSemaphoreGive(dev->mutex);
         xTaskNotifyGive(render_task);
       }
       break;
@@ -351,13 +345,14 @@ void app_main(void) {
   xTimerStart(ticker_timer, portMAX_DELAY);
 
   xTaskCreatePinnedToCore(&alarm_handler, "alarm task",
-                          configMINIMAL_STACK_SIZE * 8, NULL, 5,
-                          &alarm_handler_task, 0);
+                          configMINIMAL_STACK_SIZE * 8, (void *)&minuteman_dev,
+                          5, &alarm_handler_task, 0);
   xTaskCreatePinnedToCore(&encoder_handler, "encoder task",
-                          configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL, 0);
+                          configMINIMAL_STACK_SIZE * 8, (void *)&minuteman_dev,
+                          5, NULL, 0);
   xTaskCreatePinnedToCore(&render_handler, "render task",
-                          configMINIMAL_STACK_SIZE * 8, NULL, 5, &render_task,
-                          0);
+                          configMINIMAL_STACK_SIZE * 8, (void *)&minuteman_dev,
+                          5, &render_task, 0);
   for (;;)
     ;
 }

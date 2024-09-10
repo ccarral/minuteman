@@ -1,3 +1,7 @@
+#ifndef MINUTEMAN_H
+
+#define MINUTEMAN_H
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
@@ -65,3 +69,4 @@ void minuteman_locked_set_enabled_alarm(minuteman_t *dev, size_t alarm_idx,
 void minuteman_locked_set_active_alarm(minuteman_t *dev, size_t alarm_idx,
                                        bool active);
 void minuteman_locked_set_snoozed_alarm(minuteman_t *dev, size_t alarm_idx);
+#endif /* ifndef  MINUTEMAN_H */

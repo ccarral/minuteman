@@ -22,6 +22,8 @@
 #include <button.h>
 #include <encoder.h>
 #include <minuteman.h>
+#include <persistence.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <time.h>
@@ -255,10 +257,8 @@ void encoder_handler(void *arg) {
         minuteman_dev.display_on = true;
         if (minuteman_dev.state == ALARM_EDIT) {
           minuteman_locked_inc_selected_alarm(&minuteman_dev, e.diff);
-          nvs_set_u32(
-              alarm_storage_handle, "alarm1",
-              (long int)minuteman_dev.alarms[minuteman_dev.selected_alarm_idx]
-                  .timeval);
+          ESP_ERROR_CHECK(
+              nvs_persist_selected_alarm(alarm_storage_handle, &minuteman_dev));
           enter_edit_mode_timers();
         }
         xSemaphoreGive(minuteman_dev.mutex);
@@ -343,6 +343,7 @@ void app_main(void) {
   initialize_sntp();
   encoder_init(&encoder);
   minuteman_init(&minuteman_dev);
+  nvs_restore_stored_alarms(alarm_storage_handle, &minuteman_dev);
   init_alarm_buttons();
 
   ticker_timer =

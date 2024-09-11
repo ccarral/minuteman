@@ -100,24 +100,6 @@ void leave_edit_mode_timers() {
   xTimerStop(minuteman_dev.toggle_display_timer, portMAX_DELAY);
 }
 
-static void reactivate_snoozed_alarms(TimerHandle_t xTimer) {
-  minuteman_alarm_event_t ev;
-  if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
-    for (int i = 0; i < 2; i++) {
-      if (minuteman_dev.alarms[i].snoozed) {
-        ESP_LOGI(__FUNCTION__, "reactivating alarm %d after snooze", i);
-        minuteman_dev.alarms[i].snoozed = false;
-        minuteman_dev.alarms[i].active = true;
-        ev.alarm_idx = i;
-        ev.type = MINUTEMAN_ALARM_ACTIVE;
-        xQueueSendToBack(minuteman_dev.alarm_evt_queue, &ev, 0);
-        break;
-      }
-    }
-    xSemaphoreGive(minuteman_dev.mutex);
-  }
-}
-
 void set_timezone() {
   setenv("TZ", "CST6", 1);
   tzset();
@@ -278,7 +260,7 @@ void app_main(void) {
   // TODO: Make snooze timeout a config value
   reactivate_snoozed_alarms_timer =
       xTimerCreate("reactivate snoozed alarms", pdMS_TO_TICKS(15000), pdFALSE,
-                   NULL, reactivate_snoozed_alarms);
+                   (void* )&minuteman_dev, reactivate_snoozed_alarms);
   /* TODO: Make alarm automatic disable timeout a config value */
   alarm_disable_timer =
       xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(1000 * 60 * 20),

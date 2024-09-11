@@ -38,3 +38,23 @@ void return_to_clock_mode(TimerHandle_t xTimer) {
   xTimerReset(dev->ticker_timer, portMAX_DELAY);
   xTaskNotifyGive(dev->render_task_handle);
 }
+
+void reactivate_snoozed_alarms(TimerHandle_t xTimer) {
+  minuteman_t *dev = (minuteman_t *)pvTimerGetTimerID(xTimer);
+  minuteman_alarm_event_t ev;
+  if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
+    for (int i = 0; i < 2; i++) {
+      if (dev->alarms[i].snoozed) {
+        ESP_LOGI(__FUNCTION__, "reactivating alarm %d after snooze", i);
+        dev->alarms[i].snoozed = false;
+        dev->alarms[i].active = true;
+        ev.alarm_idx = i;
+        ev.type = MINUTEMAN_ALARM_ACTIVE;
+        xQueueSendToBack(dev->alarm_evt_queue, &ev, 0);
+        break;
+      }
+    }
+    xSemaphoreGive(dev->mutex);
+  }
+}
+

@@ -36,18 +36,10 @@ static button_t button_alarm1;
 static button_t button_snooze;
 
 static TimerHandle_t return_to_clock_timer;
-static TimerHandle_t alarm_disable_timer;
 static TimerHandle_t reactivate_snoozed_alarms_timer;
 static minuteman_t minuteman_dev;
 static TaskHandle_t alarm_handler_task;
 static nvs_handle_t alarm_storage_handle;
-
-static void disable_alarm(TimerHandle_t xTimer) {
-  minuteman_alarm_event_t ev;
-  ev.type = MINUTEMAN_ALARM_DISABLED;
-  ev.alarm_idx = ALARM_ANY;
-  ESP_LOGI(__FUNCTION__, "TODO: Disable alarms");
-}
 
 static void alarm_handler(void *arg) {
   minuteman_t *dev = (minuteman_t *)arg;
@@ -63,7 +55,7 @@ static void alarm_handler(void *arg) {
         break;
       case MINUTEMAN_ALARM_ACTIVE:
         minuteman_locked_set_active_alarm(dev, e.alarm_idx, true);
-        xTimerReset(alarm_disable_timer, portMAX_DELAY);
+        xTimerReset(dev->alarm_disable_timer, portMAX_DELAY);
         break;
       case MINUTEMAN_ALARM_DISABLED:
         minuteman_locked_set_enabled_alarm(dev, e.alarm_idx, false);
@@ -262,9 +254,9 @@ void app_main(void) {
       xTimerCreate("reactivate snoozed alarms", pdMS_TO_TICKS(15000), pdFALSE,
                    (void* )&minuteman_dev, reactivate_snoozed_alarms);
   /* TODO: Make alarm automatic disable timeout a config value */
-  alarm_disable_timer =
-      xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(1000 * 60 * 20),
-                   pdFALSE, NULL, disable_alarm);
+  minuteman_dev.alarm_disable_timer =
+      xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(1000 * 60),
+                   pdFALSE, (void*) &minuteman_dev, disable_alarm);
   xTimerStart(minuteman_dev.ticker_timer, portMAX_DELAY);
 
   xTaskCreatePinnedToCore(&alarm_handler, "alarm task",

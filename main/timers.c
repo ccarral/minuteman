@@ -58,3 +58,10 @@ void reactivate_snoozed_alarms(TimerHandle_t xTimer) {
   }
 }
 
+void disable_alarm(TimerHandle_t xTimer) {
+  minuteman_alarm_event_t ev;
+  ev.type = MINUTEMAN_ALARM_DISABLED;
+  ev.alarm_idx = ALARM_ANY;
+  ESP_LOGI(__FUNCTION__, "TODO: Disable alarms");
+}
+

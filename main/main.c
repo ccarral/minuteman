@@ -5,13 +5,13 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
+#include "freertos/FreeRTOS.h"
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
 #include "esp_system.h"
-#include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <sys/time.h>
 #include <time.h>
+#include "timers.h"
 
 static button_t button_alarm0;
 static button_t button_alarm1;
@@ -42,17 +43,6 @@ static TimerHandle_t reactivate_snoozed_alarms_timer;
 static minuteman_t minuteman_dev;
 static TaskHandle_t alarm_handler_task;
 static nvs_handle_t alarm_storage_handle;
-
-static void ticker(TimerHandle_t xTimer) {
-  minuteman_t *dev = (minuteman_t *)pvTimerGetTimerID(xTimer);
-  if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
-    time(&dev->current_time);
-    minuteman_alarm_check_active(dev, ALARM_0);
-    minuteman_alarm_check_active(dev, ALARM_1);
-    xSemaphoreGive(dev->mutex);
-    xTaskNotifyGive(dev->render_task_handle);
-  }
-}
 
 static void disable_alarm(TimerHandle_t xTimer) {
   minuteman_alarm_event_t ev;
@@ -139,15 +129,6 @@ static void reactivate_snoozed_alarms(TimerHandle_t xTimer) {
     }
     xSemaphoreGive(minuteman_dev.mutex);
   }
-}
-
-static void toggle_display(TimerHandle_t xTimer) {
-  if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
-    minuteman_dev.display_on = !(minuteman_dev.display_on);
-    ESP_LOGI(__FUNCTION__, "display on: %d", minuteman_dev.display_on);
-    xSemaphoreGive(minuteman_dev.mutex);
-  }
-  xTaskNotifyGive(minuteman_dev.render_task_handle);
 }
 
 void set_timezone() {
@@ -306,7 +287,7 @@ void app_main(void) {
       xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000),
                    pdFALSE, NULL, return_to_clock_mode);
   toggle_display_timer = xTimerCreate(
-      "toggle disple on/off", pdMS_TO_TICKS(500), pdTRUE, NULL, toggle_display);
+      "toggle disple on/off", pdMS_TO_TICKS(500), pdTRUE, (void *)&minuteman_dev, toggle_display);
   // TODO: Make snooze timeout a config value
   reactivate_snoozed_alarms_timer =
       xTimerCreate("reactivate snoozed alarms", pdMS_TO_TICKS(15000), pdFALSE,

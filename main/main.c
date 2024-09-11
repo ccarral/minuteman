@@ -37,7 +37,6 @@ static button_t button_snooze;
 
 static TimerHandle_t return_to_clock_timer;
 static TimerHandle_t alarm_disable_timer;
-static TimerHandle_t toggle_display_timer;
 static TimerHandle_t reactivate_snoozed_alarms_timer;
 static minuteman_t minuteman_dev;
 static TaskHandle_t alarm_handler_task;
@@ -92,13 +91,13 @@ static void alarm_handler(void *arg) {
 void enter_edit_mode_timers() {
   xTimerStop(minuteman_dev.ticker_timer, portMAX_DELAY);
   xTimerReset(return_to_clock_timer, portMAX_DELAY);
-  xTimerReset(toggle_display_timer, portMAX_DELAY);
+  xTimerReset(minuteman_dev.toggle_display_timer, portMAX_DELAY);
 }
 
 void leave_edit_mode_timers() {
   xTimerReset(minuteman_dev.ticker_timer, portMAX_DELAY);
   xTimerStop(return_to_clock_timer, portMAX_DELAY);
-  xTimerStop(toggle_display_timer, portMAX_DELAY);
+  xTimerStop(minuteman_dev.toggle_display_timer, portMAX_DELAY);
 }
 
 static void return_to_clock_mode(TimerHandle_t xTimer) {
@@ -107,7 +106,7 @@ static void return_to_clock_mode(TimerHandle_t xTimer) {
     minuteman_dev.display_on = true;
     xSemaphoreGive(minuteman_dev.mutex);
   }
-  xTimerStop(toggle_display_timer, portMAX_DELAY);
+  xTimerStop(minuteman_dev.toggle_display_timer, portMAX_DELAY);
   xTimerReset(minuteman_dev.ticker_timer, portMAX_DELAY);
   xTaskNotifyGive(minuteman_dev.render_task_handle);
 }
@@ -285,7 +284,7 @@ void app_main(void) {
   return_to_clock_timer =
       xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000),
                    pdFALSE, NULL, return_to_clock_mode);
-  toggle_display_timer = xTimerCreate(
+  minuteman_dev.toggle_display_timer = xTimerCreate(
       "toggle disple on/off", pdMS_TO_TICKS(500), pdTRUE, (void *)&minuteman_dev, toggle_display);
   // TODO: Make snooze timeout a config value
   reactivate_snoozed_alarms_timer =

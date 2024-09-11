@@ -61,7 +61,9 @@ typedef struct {
   QueueHandle_t re_evt_queue;
   rotary_encoder_t encoder;
   TaskHandle_t render_task_handle;
+
   TimerHandle_t ticker_timer;
+  TimerHandle_t toggle_display_timer;
 } minuteman_t;
 
 esp_err_t minuteman_render_display(minuteman_t *dev);

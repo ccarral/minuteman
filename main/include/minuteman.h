@@ -65,6 +65,7 @@ typedef struct {
   TimerHandle_t ticker_timer;
   TimerHandle_t toggle_display_timer;
   TimerHandle_t alarm_disable_timer;
+  TimerHandle_t reactivate_snoozed_alarms_timer;
 } minuteman_t;
 
 esp_err_t minuteman_render_display(minuteman_t *dev);

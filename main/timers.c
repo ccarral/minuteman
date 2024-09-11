@@ -26,3 +26,15 @@ void toggle_display(TimerHandle_t xTimer) {
   }
   xTaskNotifyGive(dev->render_task_handle);
 }
+
+void return_to_clock_mode(TimerHandle_t xTimer) {
+  minuteman_t *dev = (minuteman_t *)pvTimerGetTimerID(xTimer);
+  if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
+    dev->state = CLOCK_MODE;
+    dev->display_on = true;
+    xSemaphoreGive(dev->mutex);
+  }
+  xTimerStop(dev->toggle_display_timer, portMAX_DELAY);
+  xTimerReset(dev->ticker_timer, portMAX_DELAY);
+  xTaskNotifyGive(dev->render_task_handle);
+}

@@ -100,17 +100,6 @@ void leave_edit_mode_timers() {
   xTimerStop(minuteman_dev.toggle_display_timer, portMAX_DELAY);
 }
 
-static void return_to_clock_mode(TimerHandle_t xTimer) {
-  if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
-    minuteman_dev.state = CLOCK_MODE;
-    minuteman_dev.display_on = true;
-    xSemaphoreGive(minuteman_dev.mutex);
-  }
-  xTimerStop(minuteman_dev.toggle_display_timer, portMAX_DELAY);
-  xTimerReset(minuteman_dev.ticker_timer, portMAX_DELAY);
-  xTaskNotifyGive(minuteman_dev.render_task_handle);
-}
-
 static void reactivate_snoozed_alarms(TimerHandle_t xTimer) {
   minuteman_alarm_event_t ev;
   if (xSemaphoreTake(minuteman_dev.mutex, 0) == pdTRUE) {
@@ -283,7 +272,7 @@ void app_main(void) {
   // configs
   return_to_clock_timer =
       xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000),
-                   pdFALSE, NULL, return_to_clock_mode);
+                   pdFALSE, (void* )&minuteman_dev, return_to_clock_mode);
   minuteman_dev.toggle_display_timer = xTimerCreate(
       "toggle disple on/off", pdMS_TO_TICKS(500), pdTRUE, (void *)&minuteman_dev, toggle_display);
   // TODO: Make snooze timeout a config value

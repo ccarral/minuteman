@@ -35,7 +35,6 @@ static button_t button_alarm0;
 static button_t button_alarm1;
 static button_t button_snooze;
 
-static TimerHandle_t ticker_timer;
 static TimerHandle_t return_to_clock_timer;
 static TimerHandle_t alarm_disable_timer;
 static TimerHandle_t toggle_display_timer;
@@ -91,13 +90,13 @@ static void alarm_handler(void *arg) {
 }
 
 void enter_edit_mode_timers() {
-  xTimerStop(ticker_timer, portMAX_DELAY);
+  xTimerStop(minuteman_dev.ticker_timer, portMAX_DELAY);
   xTimerReset(return_to_clock_timer, portMAX_DELAY);
   xTimerReset(toggle_display_timer, portMAX_DELAY);
 }
 
 void leave_edit_mode_timers() {
-  xTimerReset(ticker_timer, portMAX_DELAY);
+  xTimerReset(minuteman_dev.ticker_timer, portMAX_DELAY);
   xTimerStop(return_to_clock_timer, portMAX_DELAY);
   xTimerStop(toggle_display_timer, portMAX_DELAY);
 }
@@ -109,7 +108,7 @@ static void return_to_clock_mode(TimerHandle_t xTimer) {
     xSemaphoreGive(minuteman_dev.mutex);
   }
   xTimerStop(toggle_display_timer, portMAX_DELAY);
-  xTimerReset(ticker_timer, portMAX_DELAY);
+  xTimerReset(minuteman_dev.ticker_timer, portMAX_DELAY);
   xTaskNotifyGive(minuteman_dev.render_task_handle);
 }
 
@@ -279,7 +278,7 @@ void app_main(void) {
   nvs_restore_stored_alarms(alarm_storage_handle, &minuteman_dev);
   init_alarm_buttons();
 
-  ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE,
+  minuteman_dev.ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE,
                               (void *)&minuteman_dev, ticker);
   // TODO: Make flash interval and return to clock mode timeout compile time
   // configs
@@ -296,7 +295,7 @@ void app_main(void) {
   alarm_disable_timer =
       xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(1000 * 60 * 20),
                    pdFALSE, NULL, disable_alarm);
-  xTimerStart(ticker_timer, portMAX_DELAY);
+  xTimerStart(minuteman_dev.ticker_timer, portMAX_DELAY);
 
   xTaskCreatePinnedToCore(&alarm_handler, "alarm task",
                           configMINIMAL_STACK_SIZE * 8, (void *)&minuteman_dev,

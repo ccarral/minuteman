@@ -58,6 +58,11 @@ typedef struct {
   minuteman_alarm_t alarms[2];
   int selected_alarm_idx;
   bool display_on;
+  // When mask is enabled, the render function will check
+  // the mask table and make a decision on the display "on-ness"
+  // add special functionality to the snooze button to momentarily re-enable
+  // brightness to its current time-appropiate value
+  bool mask_enabled;
   struct tm timeinfo;
   QueueHandle_t alarm_evt_queue;
   QueueHandle_t re_evt_queue;
@@ -69,6 +74,7 @@ typedef struct {
   TimerHandle_t toggle_display_timer;
   TimerHandle_t alarm_disable_timer;
   TimerHandle_t reactivate_snoozed_alarms_timer;
+  TimerHandle_t reenable_mask_timer;
 } minuteman_t;
 
 esp_err_t minuteman_render_display(minuteman_t *dev);
@@ -88,5 +94,7 @@ bool minuteman_alarm_check_active(minuteman_t *dev, int alarm_idx);
 void minuteman_locked_stop_alarm_sound(minuteman_t *dev);
 
 void minuteman_locked_sound_alarm(minuteman_t *dev);
+
+void minuteman_locked_set_mask_disabled(minuteman_t *dev);
 
 #endif /* ifndef  MINUTEMAN_H */

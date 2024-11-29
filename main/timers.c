@@ -58,10 +58,17 @@ void reactivate_snoozed_alarms(TimerHandle_t xTimer) {
   }
 }
 
+void reenable_mask(TimerHandle_t xTimer) {
+  minuteman_t *dev = (minuteman_t *)pvTimerGetTimerID(xTimer);
+  if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
+    dev->mask_enabled = true;
+    xSemaphoreGive(dev->mutex);
+  }
+}
+
 void disable_alarm(TimerHandle_t xTimer) {
   minuteman_alarm_event_t ev;
   ev.type = MINUTEMAN_ALARM_DISABLED;
   ev.alarm_idx = ALARM_ANY;
   ESP_LOGI(__FUNCTION__, "TODO: Disable alarms");
 }
-

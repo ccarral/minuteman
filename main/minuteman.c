@@ -82,18 +82,60 @@ const int BRIGHTNESS[24] = {
     0, // 23
 };
 
+const int MASKED_HOURS[24] = {
+    0, // 0
+    0, // 1
+    0, // 2
+    0, // 3
+    0, // 4
+    0, // 5
+    1, // 6
+    1, // 7
+    1, // 8
+    1, // 9
+    1, // 10
+    1, // 11
+    1, // 12
+    1, // 13
+    1, // 14
+    1, // 15
+    1, // 16
+    1, // 17
+    1, // 18
+    1, // 19
+    1, // 20
+    1, // 21
+    0, // 22
+    0, // 23
+};
+
+int minuteman_locked_get_brightness(minuteman_t *dev, int hour) {
+  return BRIGHTNESS[hour];
+}
+
+bool minuteman_locked_get_display_enabled(minuteman_t *dev, int hour) {
+  // We check if device is in masked mode, and if it is,
+  // we take into account the mask value for this calculation.
+  if (dev->mask_enabled && !(dev->state == ALARM_EDIT)) {
+    return dev->display_on && MASKED_HOURS[hour];
+  } else {
+    return dev->display_on;
+  }
+}
+
 esp_err_t minuteman_render_display(minuteman_t *dev) {
+  int brightness;
   if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
     CHECK(max7219_clear(dev->display));
-    if (!dev->display_on) {
+    localtime_r(&dev->current_time, &dev->timeinfo);
+    if (!minuteman_locked_get_display_enabled(dev, dev->timeinfo.tm_hour)) {
       sprintf(dev->digits, "%s", "      ");
     } else {
+      brightness = minuteman_locked_get_brightness(dev, dev->timeinfo.tm_hour);
+      CHECK(max7219_set_brightness(dev->display, brightness));
       switch (dev->state) {
       case CLOCK_MODE:
-        localtime_r(&dev->current_time, &dev->timeinfo);
         strftime(dev->digits, sizeof(dev->digits), TIME_FMT, &dev->timeinfo);
-        CHECK(max7219_set_brightness(dev->display,
-                                     BRIGHTNESS[dev->timeinfo.tm_hour]));
         break;
       case ALARM_EDIT:
         localtime_r(&dev->alarms[dev->selected_alarm_idx].timeval,
@@ -178,6 +220,11 @@ void minuteman_locked_set_snoozed_alarm(minuteman_t *dev, size_t alarm_idx) {
   minuteman_locked_stop_alarm(dev);
 }
 
+void minuteman_locked_set_mask_disabled(minuteman_t *dev) {
+  ESP_LOGI(__FUNCTION__, "mask disabled");
+  dev->mask_enabled = false;
+}
+
 esp_err_t display_init(max7219_t *display) {
   spi_bus_config_t cfg = {.mosi_io_num = PIN_NUM_MOSI,
                           .miso_io_num = -1,
@@ -246,6 +293,7 @@ esp_err_t minuteman_init(minuteman_t *dev) {
   init_alarm(&dev->alarms[0]);
   init_alarm(&dev->alarms[1]);
   dev->display_on = true;
+  dev->mask_enabled = true;
   CHECK(encoder_init(dev));
   dev->alarm_evt_queue =
       xQueueCreate(EV_QUEUE_LEN, sizeof(minuteman_alarm_event_t));

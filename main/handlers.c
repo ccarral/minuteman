@@ -33,6 +33,10 @@ void alarm_handler(void *arg) {
         xTaskNotifyGive(dev->render_task_handle);
         break;
       case MINUTEMAN_ALARM_SNOOZED:
+        // If pressed, we want to reset restart the timer that will reset
+        // the masked value to "enabled" after a timeout
+        minuteman_locked_set_mask_disabled(dev);
+        xTimerReset(dev->reenable_mask_timer, portMAX_DELAY);
         for (size_t i = 0; i < 2; i++) {
           if (dev->alarms[i].active) {
             minuteman_locked_set_snoozed_alarm(dev, i);

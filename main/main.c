@@ -221,9 +221,13 @@ void app_main(void) {
                    (void *)&minuteman_dev, reactivate_snoozed_alarms);
   /* TODO: Make alarm automatic disable timeout a config value */
   minuteman_dev.alarm_disable_timer =
-      xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(1000 * 60),
+      xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(2000 * 60),
                    pdFALSE, (void *)&minuteman_dev, disable_alarm);
   xTimerStart(minuteman_dev.ticker_timer, portMAX_DELAY);
+
+  minuteman_dev.reenable_mask_timer = xTimerCreate(
+      "reenable mask functionality after 5s", pdMS_TO_TICKS(1000 * 5), pdFALSE,
+      (void *)&minuteman_dev, reenable_mask);
 
   xTaskCreatePinnedToCore(&alarm_handler, "alarm task",
                           configMINIMAL_STACK_SIZE * 8, (void *)&minuteman_dev,

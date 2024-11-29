@@ -45,7 +45,7 @@ typedef struct {
 } minuteman_alarm_event_t;
 
 // TODO: Set in config
-#define ENCODER_INPUT_SEC_MULTIPLIER (60 * 1)
+#define ENCODER_INPUT_SEC_MULTIPLIER (60 * 5)
 
 typedef enum { CLOCK_MODE, ALARM_EDIT } minuteman_state_t;
 

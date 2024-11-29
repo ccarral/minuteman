@@ -138,7 +138,7 @@ void encoder_handler(void *arg) {
 static void on_button0_press(button_t *btn, button_state_t state) {
   minuteman_alarm_event_t ev;
   ev.alarm_idx = 0;
-  if (state == BUTTON_PRESSED_LONG) {
+  if (state == BUTTON_PRESSED) {
     ev.type = MINUTEMAN_ALARM_ENABLED;
     xQueueSendToBack(minuteman_dev.alarm_evt_queue, &ev, 0);
   }
@@ -151,7 +151,7 @@ static void on_button0_press(button_t *btn, button_state_t state) {
 static void on_button1_press(button_t *btn, button_state_t state) {
   minuteman_alarm_event_t ev;
   ev.alarm_idx = 1;
-  if (state == BUTTON_PRESSED_LONG) {
+  if (state == BUTTON_PRESSED) {
     ev.type = MINUTEMAN_ALARM_ENABLED;
     xQueueSendToBack(minuteman_dev.alarm_evt_queue, &ev, 0);
   }

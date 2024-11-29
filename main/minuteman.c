@@ -151,12 +151,14 @@ esp_err_t minuteman_render_display(minuteman_t *dev) {
     // When on clock mode, the alarm light is on if the alarm is enabled.
     // When on alarm edit mode, the alarm light is on if the current alarm is
     // being edited.
-    if (dev->alarms[0].enabled) {
+    if (dev->alarms[0].enabled ||
+        (dev->state == ALARM_EDIT && dev->selected_alarm_idx == 0)) {
       CHECK(max7219_set_digit(dev->display, 0, 0b11111111));
     } else {
       CHECK(max7219_set_digit(dev->display, 0, 0));
     }
-    if (dev->alarms[1].enabled) {
+    if (dev->alarms[1].enabled ||
+        (dev->state == ALARM_EDIT && dev->selected_alarm_idx == 1)) {
       CHECK(max7219_set_digit(dev->display, 1, 0b11111111));
     } else {
       CHECK(max7219_set_digit(dev->display, 1, 0));

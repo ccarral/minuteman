@@ -19,18 +19,18 @@ void alarm_handler(void *arg) {
     if (xSemaphoreTake(dev->mutex, portMAX_DELAY) == pdTRUE) {
       switch (e.type) {
       case MINUTEMAN_ALARM_ENABLED:
-        minuteman_locked_set_enabled_alarm(dev, e.alarm_idx, true);
+        minuteman_locked_set_alarm_enabled(dev, e.alarm_idx, true);
         xTaskNotifyGive(dev->render_task_handle);
         break;
       case MINUTEMAN_ALARM_ACTIVE:
-        minuteman_locked_set_active_alarm(dev, e.alarm_idx, true);
+        minuteman_locked_set_alarm_active(dev, e.alarm_idx);
         xTimerReset(dev->alarm_disable_timer, portMAX_DELAY);
         break;
       case MINUTEMAN_ALARM_DISABLED:
-        minuteman_locked_set_enabled_alarm(dev, e.alarm_idx, false);
-        xTaskNotifyGive(dev->render_task_handle);
       case MINUTEMAN_ALARM_INACTIVE:
-        minuteman_locked_set_active_alarm(dev, e.alarm_idx, false);
+        minuteman_locked_set_alarm_enabled(dev, e.alarm_idx, false);
+        minuteman_locked_set_alarm_inactive(dev, e.alarm_idx);
+        xTaskNotifyGive(dev->render_task_handle);
         break;
       case MINUTEMAN_ALARM_SNOOZED:
         for (size_t i = 0; i < 2; i++) {
@@ -48,4 +48,3 @@ void alarm_handler(void *arg) {
     }
   }
 }
-

@@ -5,6 +5,7 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
+#include "button.h"
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_event.h"
@@ -12,11 +13,13 @@
 #include "esp_sntp.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOSConfig_arch.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
 #include "lwip/err.h"
 #include "nvs_flash.h"
+#include "portmacro.h"
 #include "sdkconfig.h"
 #include "soc/gpio_num.h"
 #include "wifi.h"
@@ -45,6 +48,11 @@
 #define RE_A_GPIO CONFIG_PIN_ROT_ENCODER_A
 #define RE_B_GPIO CONFIG_PIN_ROT_ENCODER_B
 #define RE_BTN_GPIO CONFIG_PIN_ROT_ENCODER_BUTTON
+
+#define ALARM_GPIO_OUT GPIO_NUM_22
+
+static TimerHandle_t alarm_high_timer;
+static TimerHandle_t alarm_low_timer;
 
 esp_err_t minuteman_render_display(minuteman_t *dev) {
   if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
@@ -91,22 +99,53 @@ void minuteman_locked_inc_selected_alarm(minuteman_t *dev, int32_t diff) {
       (diff * ENCODER_INPUT_SEC_MULTIPLIER);
 }
 
-void minuteman_locked_set_enabled_alarm(minuteman_t *dev, size_t alarm_idx,
+void minuteman_locked_set_alarm_enabled(minuteman_t *dev, size_t alarm_idx,
                                         bool enabled) {
   dev->alarms[alarm_idx].enabled = enabled;
   ESP_LOGI(__FUNCTION__, "alarm %zu enabled", alarm_idx);
 }
 
-void minuteman_locked_set_active_alarm(minuteman_t *dev, size_t alarm_idx,
-                                       bool active) {
-  dev->alarms[alarm_idx].active = active;
+void minuteman_locked_set_alarm_disabled(minuteman_t *dev, size_t alarm_idx) {
+  dev->alarms[alarm_idx].enabled = false;
+  ESP_LOGI(__FUNCTION__, "alarm %zu disabled", alarm_idx);
+}
+
+void _alarm_high(TimerHandle_t xTimer) {
+  gpio_set_level(GPIO_NUM_22, true);
+  xTimerStart(alarm_low_timer, 0);
+}
+void _alarm_low(TimerHandle_t xTimer) {
+  gpio_set_level(GPIO_NUM_22, false);
+  xTimerStart(alarm_high_timer, 0);
+}
+
+void minuteman_locked_sound_alarm(minuteman_t *dev) {
+  xTimerStart(alarm_high_timer, 0);
+}
+
+void minuteman_locked_stop_alarm(minuteman_t *dev) {
+  xTimerStop(alarm_high_timer, 0);
+  xTimerStop(alarm_low_timer, 0);
+  gpio_set_level(ALARM_GPIO_OUT, false);
+}
+
+void minuteman_locked_set_alarm_active(minuteman_t *dev, size_t alarm_idx) {
+  dev->alarms[alarm_idx].active = true;
   ESP_LOGI(__FUNCTION__, "alarm %zu active", alarm_idx);
+  minuteman_locked_sound_alarm(dev);
+}
+
+void minuteman_locked_set_alarm_inactive(minuteman_t *dev, size_t alarm_idx) {
+  dev->alarms[alarm_idx].active = false;
+  ESP_LOGI(__FUNCTION__, "alarm %zu inactive", alarm_idx);
+  minuteman_locked_stop_alarm(dev);
 }
 
 void minuteman_locked_set_snoozed_alarm(minuteman_t *dev, size_t alarm_idx) {
   ESP_LOGI(__FUNCTION__, "alarm %zu snoozed", alarm_idx);
   dev->alarms[alarm_idx].snoozed = true;
   dev->alarms[alarm_idx].active = false;
+  minuteman_locked_stop_alarm(dev);
 }
 
 esp_err_t display_init(max7219_t *display) {
@@ -140,6 +179,17 @@ void init_alarm(minuteman_alarm_t *alarm) {
   alarm->timeval = 0;
 }
 
+esp_err_t init_alarm_button(button_t *button, gpio_num_t gpio,
+                            button_event_cb_t cb) {
+  button->gpio = gpio;
+  button->pressed_level = 0;
+  button->internal_pull = true;
+  button->autorepeat = false;
+  button->callback = cb;
+  CHECK(button_init(button));
+  return ESP_OK;
+}
+
 esp_err_t encoder_init(minuteman_t *dev) {
   // Create event queue for rotary encoders
   dev->re_evt_queue =
@@ -166,9 +216,15 @@ esp_err_t minuteman_init(minuteman_t *dev) {
   init_alarm(&dev->alarms[0]);
   init_alarm(&dev->alarms[1]);
   dev->display_on = true;
-  encoder_init(dev);
+  CHECK(encoder_init(dev));
   dev->alarm_evt_queue =
       xQueueCreate(EV_QUEUE_LEN, sizeof(minuteman_alarm_event_t));
+  gpio_reset_pin(ALARM_GPIO_OUT);
+  CHECK(gpio_set_direction(ALARM_GPIO_OUT, GPIO_MODE_OUTPUT));
+  alarm_high_timer =
+      xTimerCreate("alarm high", pdMS_TO_TICKS(500), false, NULL, _alarm_high);
+  alarm_low_timer =
+      xTimerCreate("alarm low", pdMS_TO_TICKS(500), false, NULL, _alarm_low);
   return ESP_OK;
 }
 

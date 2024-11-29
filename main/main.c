@@ -7,6 +7,7 @@
 */
 #include "freertos/FreeRTOS.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -15,9 +16,12 @@
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
+#include "hal/ledc_types.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
+#include "soc/clk_tree_defs.h"
+#include "soc/gpio_num.h"
 #include "wifi.h"
 #include <alarm.h>
 #include <button.h>
@@ -200,23 +204,25 @@ void app_main(void) {
   nvs_restore_stored_alarms(alarm_storage_handle, &minuteman_dev);
   init_alarm_buttons();
 
-  minuteman_dev.ticker_timer = xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE,
-                              (void *)&minuteman_dev, ticker);
+  minuteman_dev.ticker_timer =
+      xTimerCreate("1000ms timer", pdMS_TO_TICKS(1000), pdTRUE,
+                   (void *)&minuteman_dev, ticker);
   // TODO: Make flash interval and return to clock mode timeout compile time
   // configs
   return_to_clock_timer =
       xTimerCreate("return to clock mode automatically", pdMS_TO_TICKS(5000),
-                   pdFALSE, (void* )&minuteman_dev, return_to_clock_mode);
-  minuteman_dev.toggle_display_timer = xTimerCreate(
-      "toggle disple on/off", pdMS_TO_TICKS(500), pdTRUE, (void *)&minuteman_dev, toggle_display);
+                   pdFALSE, (void *)&minuteman_dev, return_to_clock_mode);
+  minuteman_dev.toggle_display_timer =
+      xTimerCreate("toggle disple on/off", pdMS_TO_TICKS(500), pdTRUE,
+                   (void *)&minuteman_dev, toggle_display);
   // TODO: Make snooze timeout a config value
   minuteman_dev.reactivate_snoozed_alarms_timer =
-      xTimerCreate("reactivate snoozed alarms", pdMS_TO_TICKS(15000), pdFALSE,
-                   (void* )&minuteman_dev, reactivate_snoozed_alarms);
+      xTimerCreate("reactivate snoozed alarms", pdMS_TO_TICKS(60000), pdFALSE,
+                   (void *)&minuteman_dev, reactivate_snoozed_alarms);
   /* TODO: Make alarm automatic disable timeout a config value */
   minuteman_dev.alarm_disable_timer =
       xTimerCreate("disable alarm after a while", pdMS_TO_TICKS(1000 * 60),
-                   pdFALSE, (void*) &minuteman_dev, disable_alarm);
+                   pdFALSE, (void *)&minuteman_dev, disable_alarm);
   xTimerStart(minuteman_dev.ticker_timer, portMAX_DELAY);
 
   xTaskCreatePinnedToCore(&alarm_handler, "alarm task",

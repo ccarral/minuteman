@@ -2,8 +2,9 @@
 
 #define MINUTEMAN_H
 
-#include "encoder.h"
 #include "freertos/FreeRTOS.h"
+#include "button.h"
+#include "encoder.h"
 #include "freertos/idf_additions.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
@@ -27,6 +28,7 @@ typedef struct {
   bool active;
   bool snoozed;
   time_t timeval;
+  button_t button;
 } minuteman_alarm_t;
 
 enum minuteman_alarm_event_type {
@@ -60,6 +62,7 @@ typedef struct {
   QueueHandle_t alarm_evt_queue;
   QueueHandle_t re_evt_queue;
   rotary_encoder_t encoder;
+
   TaskHandle_t render_task_handle;
 
   TimerHandle_t ticker_timer;
@@ -74,12 +77,16 @@ esp_err_t minuteman_init(minuteman_t *dev);
 
 void minuteman_locked_inc_selected_alarm(minuteman_t *dev, int32_t diff);
 
-void minuteman_locked_set_enabled_alarm(minuteman_t *dev, size_t alarm_idx,
+void minuteman_locked_set_alarm_enabled(minuteman_t *dev, size_t alarm_idx,
                                         bool enabled);
-void minuteman_locked_set_active_alarm(minuteman_t *dev, size_t alarm_idx,
-                                       bool active);
+void minuteman_locked_set_alarm_active(minuteman_t *dev, size_t alarm_idx);
+void minuteman_locked_set_alarm_inactive(minuteman_t *dev, size_t alarm_idx);
 void minuteman_locked_set_snoozed_alarm(minuteman_t *dev, size_t alarm_idx);
 
 bool minuteman_alarm_check_active(minuteman_t *dev, int alarm_idx);
+
+void minuteman_locked_stop_alarm_sound(minuteman_t *dev);
+
+void minuteman_locked_sound_alarm(minuteman_t *dev);
 
 #endif /* ifndef  MINUTEMAN_H */

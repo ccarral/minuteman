@@ -54,6 +54,34 @@
 static TimerHandle_t alarm_high_timer;
 static TimerHandle_t alarm_low_timer;
 
+// cut off sine function
+const int BRIGHTNESS[24] = {
+    1, // 0
+    1, // 1
+    1, // 2
+    1, // 3
+    1, // 4
+    2, // 5
+    2, // 6
+    2, // 7
+    3, // 8
+    3, // 9
+    3, // 10
+    3, // 11
+    3, // 12
+    3, // 13
+    3, // 14
+    3, // 15
+    3, // 16
+    2, // 17
+    2, // 18
+    2, // 19
+    1, // 20
+    1, // 21
+    1, // 22
+    1, // 23
+};
+
 esp_err_t minuteman_render_display(minuteman_t *dev) {
   if (xSemaphoreTake(dev->mutex, 0) == pdTRUE) {
     CHECK(max7219_clear(dev->display));
@@ -64,6 +92,8 @@ esp_err_t minuteman_render_display(minuteman_t *dev) {
       case CLOCK_MODE:
         localtime_r(&dev->current_time, &dev->timeinfo);
         strftime(dev->digits, sizeof(dev->digits), TIME_FMT, &dev->timeinfo);
+        CHECK(max7219_set_brightness(dev->display,
+                                     BRIGHTNESS[dev->timeinfo.tm_hour]));
         break;
       case ALARM_EDIT:
         localtime_r(&dev->alarms[dev->selected_alarm_idx].timeval,
@@ -167,7 +197,7 @@ esp_err_t display_init(max7219_t *display) {
   CHECK(
       max7219_init_desc(display, HOST, MAX7219_MAX_CLOCK_SPEED_HZ, PIN_NUM_CS));
   CHECK(max7219_init(display));
-  max7219_set_brightness(display, MAX7219_MAX_BRIGHTNESS / 2);
+  max7219_set_brightness(display, MAX7219_MAX_BRIGHTNESS / 4);
   CHECK(max7219_draw_text_7seg(display, 2, "888888"));
   return ESP_OK;
 }

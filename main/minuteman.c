@@ -56,9 +56,9 @@ static TimerHandle_t alarm_low_timer;
 
 // cut off sine function
 const int BRIGHTNESS[24] = {
-    1, // 0
-    1, // 1
-    1, // 2
+    0, // 0
+    0, // 1
+    0, // 2
     1, // 3
     1, // 4
     2, // 5
@@ -78,8 +78,8 @@ const int BRIGHTNESS[24] = {
     2, // 19
     1, // 20
     1, // 21
-    1, // 22
-    1, // 23
+    0, // 22
+    0, // 23
 };
 
 esp_err_t minuteman_render_display(minuteman_t *dev) {
